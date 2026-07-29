@@ -94,13 +94,13 @@ const handleLogin = async () => {
     const data = await res.json();
 
     if (res.ok) {
-      localStorage.setItem('usuario_kikiitick', JSON.stringify(data.usuario));
-      
+      localStorage.setItem('usuario_kikiitick', JSON.stringify(data.user));
+
       if (typeof fetchUser === 'function') {
         await fetchUser();
       }
 
-      const rol = data.usuario?.rol;
+      const rol = data.user?.rol;
       if (rol === 'admin') {
         router.push({ name: 'AdminUsuarios' });
       } else if (rol === 'organizador') {
