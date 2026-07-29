@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Mail\OrganizadorAprobadoMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class AdminController extends Controller
@@ -98,8 +99,14 @@ class AdminController extends Controller
         $usuario->estatus_organizador = 'aprobado';
         $usuario->save();
 
-        // Enviar correo de notificación
-        Mail::to($usuario->correo)->send(new OrganizadorAprobadoMail($usuario));
+        // Enviar correo de notificación de forma síncrona (garantiza entrega real; no depende de un worker de cola)
+        try {
+            Mail::to($usuario->correo)->send(new OrganizadorAprobadoMail($usuario));
+        } catch (\Exception $e) {
+            Log::error('Error al enviar el correo de aprobación de organizador: ' . $e->getMessage(), [
+                'usuario_id' => $usuario->id,
+            ]);
+        }
 
         return response()->json([
             'mensaje' => "El usuario {$usuario->nombre} ha sido aprobado como organizador exitosamente.",

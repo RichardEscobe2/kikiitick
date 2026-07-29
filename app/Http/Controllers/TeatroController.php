@@ -22,6 +22,14 @@ class TeatroController extends Controller
         return null;
     }
 
+    /**
+     * Un admin siempre tiene acceso; cualquier otro usuario debe ser el propietario del recurso.
+     */
+    private function esPropietarioOAdmin($user, int $ownerId): bool
+    {
+        return $user->rol === 'admin' || $user->id === $ownerId;
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -93,7 +101,7 @@ class TeatroController extends Controller
             return response()->json(['message' => 'Recinto no encontrado.'], 404);
         }
 
-        if ($user->rol !== 'admin' && $teatro->usuario_id !== $user->id) {
+        if (!$this->esPropietarioOAdmin($user, $teatro->usuario_id)) {
             return response()->json(['message' => 'No tienes permiso para editar este recinto.'], 403);
         }
 
@@ -160,7 +168,7 @@ class TeatroController extends Controller
             return response()->json(['message' => 'Recinto no encontrado.'], 404);
         }
 
-        if ($user->rol !== 'admin' && $teatro->usuario_id !== $user->id) {
+        if (!$this->esPropietarioOAdmin($user, $teatro->usuario_id)) {
             return response()->json(['message' => 'No tienes permiso para eliminar este recinto.'], 403);
         }
 
@@ -187,7 +195,7 @@ class TeatroController extends Controller
             return response()->json(['message' => 'Recinto no encontrado.'], 404);
         }
 
-        if ($user->rol !== 'admin' && $teatro->usuario_id !== $user->id) {
+        if (!$this->esPropietarioOAdmin($user, $teatro->usuario_id)) {
             return response()->json(['message' => 'No tienes permiso sobre este recinto.'], 403);
         }
 
@@ -275,7 +283,7 @@ class TeatroController extends Controller
             return response()->json(['message' => 'Zona no encontrada.'], 404);
         }
 
-        if ($user->rol !== 'admin' && $zona->teatro->usuario_id !== $user->id) {
+        if (!$this->esPropietarioOAdmin($user, $zona->teatro->usuario_id)) {
             return response()->json(['message' => 'No tienes permiso para eliminar esta zona.'], 403);
         }
 

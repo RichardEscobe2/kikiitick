@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             'contrasena' => Hash::make('password123'),
             'rol' => 'organizador',
             'estatus_organizador' => 'aprobado',
+            'correo_verificado_at' => now(), // Requerido por el guard de verificación en AuthController::login
         ]);
 
         // 2. Crear el Teatro

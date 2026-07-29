@@ -73,20 +73,25 @@ class SeatGeneratorService
 
         if (!$teatro) return;
 
-        DB::transaction(function () use ($evento, $teatro) {
-            foreach ($teatro->asientos as $asiento) {
-                if ($asiento->tipo === 'asiento') {
-                    AsientoEvento::firstOrCreate(
-                        [
-                            'evento_id'  => $evento->id,
-                            'asiento_id' => $asiento->id,
-                        ],
-                        [
-                            'estado'     => 'disponible',
-                        ]
-                    );
-                }
-            }
-        });
+        $now = now();
+
+        $filasParaInsertar = $teatro->asientos
+            ->where('tipo', 'asiento')
+            ->map(fn ($asiento) => [
+                'evento_id'  => $evento->id,
+                'asiento_id' => $asiento->id,
+                'estado'     => 'disponible',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])
+            ->all();
+
+        if (empty($filasParaInsertar)) return;
+
+        AsientoEvento::upsert(
+            $filasParaInsertar,
+            ['evento_id', 'asiento_id'],
+            ['estado']
+        );
     }
 }

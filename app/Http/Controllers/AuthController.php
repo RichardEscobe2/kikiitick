@@ -9,10 +9,26 @@ use App\Services\SeatGeneratorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class AuthController extends Controller
 {
+    /**
+     * Envía el código de verificación de forma síncrona (garantiza entrega real a Mailtrap/SMTP
+     * en vez de depender de un worker de cola que puede no estar corriendo). Los fallos de envío
+     * se capturan y registran para no interrumpir el flujo de autenticación.
+     */
+    private function enviarCodigoPorCorreo(User $usuario, string $codigo): void
+    {
+        try {
+            Mail::to($usuario->correo)->send(new CodigoVerificacionMail($codigo));
+        } catch (\Exception $e) {
+            Log::error('Error al enviar el correo de código de verificación: ' . $e->getMessage(), [
+                'usuario_id' => $usuario->id,
+            ]);
+        }
+    }
     public function register(Request $request)
     {
         $validated = $request->validate([
@@ -37,7 +53,7 @@ class AuthController extends Controller
             'codigo_expira_en'    => now()->addMinutes(10),
         ]);
 
-        Mail::to($usuario->correo)->send(new CodigoVerificacionMail($codigo));
+        $this->enviarCodigoPorCorreo($usuario, $codigo);
 
         return response()->json([
             'message' => 'Usuario registrado exitosamente. Código enviado.',
@@ -91,7 +107,7 @@ class AuthController extends Controller
         // Generar matriz inicial
         SeatGeneratorService::generarAsientosParaTeatro($teatro);
 
-        Mail::to($usuario->correo)->send(new CodigoVerificacionMail($codigo));
+        $this->enviarCodigoPorCorreo($usuario, $codigo);
 
         return response()->json([
             'message' => 'Solicitud enviada exitosamente. Verifica tu correo para activar tu cuenta.',
@@ -112,6 +128,13 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Las credenciales proporcionadas son incorrectas.'
             ], 401);
+        }
+
+        // 🛡️ Bloquea el login si la cuenta no ha completado la verificación por OTP/correo.
+        if (!$usuario->correo_verificado_at) {
+            return response()->json([
+                'message' => 'Account not verified. Please check your email for the verification code.'
+            ], 403);
         }
 
         Auth::login($usuario);
@@ -137,7 +160,7 @@ class AuthController extends Controller
             'codigo_expira_en'    => now()->addMinutes(10),
         ]);
 
-        Mail::to($usuario->correo)->send(new CodigoVerificacionMail($codigo));
+        $this->enviarCodigoPorCorreo($usuario, $codigo);
 
         return response()->json([
             'message' => 'Código de verificación enviado a tu correo.'
@@ -213,7 +236,7 @@ class AuthController extends Controller
             'codigo_expira_en'    => now()->addMinutes(10),
         ]);
 
-        Mail::to($usuario->correo)->send(new CodigoVerificacionMail($codigo));
+        $this->enviarCodigoPorCorreo($usuario, $codigo);
 
         return response()->json([
             'message' => 'Código de recuperación enviado a tu correo.'

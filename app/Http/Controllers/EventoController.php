@@ -7,7 +7,7 @@ use App\Models\Teatro;
 use App\Models\ZonaTeatro;
 use App\Models\BoletoEvento;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class EventoController extends Controller
 {
@@ -18,14 +18,33 @@ class EventoController extends Controller
     {
         $usuario = $request->user();
 
-        $eventos = Evento::with(['teatro.zonas', 'boletosEvento.zonaTeatro'])
-            ->whereHas('teatro', function ($query) use ($usuario) {
-                $query->where('usuario_id', $usuario->id);
-            })
-            ->orderBy('fecha_hora', 'asc')
-            ->get();
+        $query = Evento::with(['teatro.zonas', 'boletosEvento.zonaTeatro']);
+
+        if ($usuario->rol !== 'admin') {
+            $query->whereHas('teatro', function ($q) use ($usuario) {
+                $q->where('usuario_id', $usuario->id);
+            });
+        }
+
+        $eventos = $query->orderBy('fecha_hora', 'asc')->get();
 
         return response()->json($eventos, 200);
+    }
+
+    /**
+     * Busca un evento autorizando por propiedad del recinto, con bypass para administradores.
+     */
+    private function buscarEventoAutorizado($usuario, $id, array $with = [])
+    {
+        $query = Evento::with($with);
+
+        if ($usuario->rol !== 'admin') {
+            $query->whereHas('teatro', function ($q) use ($usuario) {
+                $q->where('usuario_id', $usuario->id);
+            });
+        }
+
+        return $query->find($id);
     }
 
     public function store(Request $request)
@@ -49,9 +68,13 @@ class EventoController extends Controller
             'imagen.max'       => 'La imagen no puede pesar más de 4MB.'
         ]);
 
-        $teatro = Teatro::where('id', $validated['teatro_id'])
-            ->where('usuario_id', $usuario->id)
-            ->first();
+        $teatroQuery = Teatro::where('id', $validated['teatro_id']);
+
+        if ($usuario->rol !== 'admin') {
+            $teatroQuery->where('usuario_id', $usuario->id);
+        }
+
+        $teatro = $teatroQuery->first();
 
         if (!$teatro) {
             return response()->json(['message' => 'No tienes permisos para crear un evento en este recinto.'], 403);
@@ -83,9 +106,7 @@ class EventoController extends Controller
     {
         $usuario = $request->user();
 
-        $evento = Evento::whereHas('teatro', function ($query) use ($usuario) {
-            $query->where('usuario_id', $usuario->id);
-        })->find($id);
+        $evento = $this->buscarEventoAutorizado($usuario, $id);
 
         if (!$evento) {
             return response()->json(['message' => 'Evento no encontrado o no autorizado.'], 404);
@@ -124,9 +145,7 @@ class EventoController extends Controller
     {
         $usuario = $request->user();
 
-        $evento = Evento::whereHas('teatro', function ($query) use ($usuario) {
-            $query->where('usuario_id', $usuario->id);
-        })->find($id);
+        $evento = $this->buscarEventoAutorizado($usuario, $id);
 
         if (!$evento) {
             return response()->json(['message' => 'Evento no encontrado o no autorizado.'], 404);
@@ -144,10 +163,7 @@ class EventoController extends Controller
     {
         $usuario = $request->user();
 
-        $evento = Evento::with(['teatro.zonas', 'boletosEvento'])
-            ->whereHas('teatro', function ($query) use ($usuario) {
-                $query->where('usuario_id', $usuario->id);
-            })->find($id);
+        $evento = $this->buscarEventoAutorizado($usuario, $id, ['teatro.zonas', 'boletosEvento']);
 
         if (!$evento) {
             return response()->json(['message' => 'Evento no encontrado o no autorizado.'], 404);
@@ -181,9 +197,7 @@ class EventoController extends Controller
     {
         $usuario = $request->user();
 
-        $evento = Evento::whereHas('teatro', function ($query) use ($usuario) {
-            $query->where('usuario_id', $usuario->id);
-        })->find($id);
+        $evento = $this->buscarEventoAutorizado($usuario, $id);
 
         if (!$evento) {
             return response()->json(['message' => 'Evento no encontrado o no autorizado.'], 404);
@@ -197,25 +211,27 @@ class EventoController extends Controller
             'precios.*.precio_base.min' => 'El precio de las zonas no puede ser negativo.'
         ]);
 
-        foreach ($validated['precios'] as $item) {
-            $boleto = BoletoEvento::where('evento_id', $evento->id)
-                ->where('zona_teatro_id', $item['zona_teatro_id'])
-                ->first();
+        DB::transaction(function () use ($validated, $evento) {
+            foreach ($validated['precios'] as $item) {
+                $boleto = BoletoEvento::where('evento_id', $evento->id)
+                    ->where('zona_teatro_id', $item['zona_teatro_id'])
+                    ->first();
 
-            if ($boleto) {
-                $boleto->update([
-                    'precio_base' => $item['precio_base']
-                ]);
-            } else {
-                $zona = ZonaTeatro::find($item['zona_teatro_id']);
-                BoletoEvento::create([
-                    'evento_id'        => $evento->id,
-                    'zona_teatro_id'   => $item['zona_teatro_id'],
-                    'precio_base'      => $item['precio_base'],
-                    'stock_disponible' => $zona ? $zona->capacidad_asientos : 0,
-                ]);
+                if ($boleto) {
+                    $boleto->update([
+                        'precio_base' => $item['precio_base']
+                    ]);
+                } else {
+                    $zona = ZonaTeatro::find($item['zona_teatro_id']);
+                    BoletoEvento::create([
+                        'evento_id'        => $evento->id,
+                        'zona_teatro_id'   => $item['zona_teatro_id'],
+                        'precio_base'      => $item['precio_base'],
+                        'stock_disponible' => $zona ? $zona->capacidad_asientos : 0,
+                    ]);
+                }
             }
-        }
+        });
 
         return response()->json([
             'message' => 'Precios por zona actualizados correctamente.',
