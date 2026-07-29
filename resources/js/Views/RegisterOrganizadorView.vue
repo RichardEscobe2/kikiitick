@@ -242,6 +242,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { axios } from '../composables/useAuth';
 
 const router = useRouter();
 const cargando = ref(false);
@@ -369,34 +370,23 @@ const handleSubmit = async () => {
   };
 
   try {
-    const res = await fetch('/api/registro-organizador', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.status === 429) {
+    await axios.post('/api/registro-organizador', payload);
+    router.push({ name: 'VerificarCodigo', query: { correo: form.value.correo } });
+  } catch (err) {
+    if (err.response?.status === 429) {
       errorMsg.value = 'Has superado el límite de intentos. Espera 1 minuto.';
       return;
     }
 
-    const data = await res.json();
-
-    if (res.ok) {
-      router.push({ name: 'VerificarCodigo', query: { correo: form.value.correo } });
+    const data = err.response?.data;
+    if (data?.errors) {
+      const primerosErrores = Object.values(data.errors).flat();
+      errorMsg.value = primerosErrores[0] || 'Error de validación.';
+    } else if (data) {
+      errorMsg.value = data.error || data.message || 'Error al registrar el organizador.';
     } else {
-      if (data.errors) {
-        const primerosErrores = Object.values(data.errors).flat();
-        errorMsg.value = primerosErrores[0] || 'Error de validación.';
-      } else {
-        errorMsg.value = data.error || data.message || 'Error al registrar el organizador.';
-      }
+      errorMsg.value = 'Ocurrió un problema de comunicación con el servidor.';
     }
-  } catch (err) {
-    errorMsg.value = 'Ocurrió un problema de comunicación con el servidor.';
   } finally {
     cargando.value = false;
   }

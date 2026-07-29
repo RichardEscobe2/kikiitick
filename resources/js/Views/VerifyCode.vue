@@ -43,6 +43,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { axios } from '../composables/useAuth';
 
 const route = useRoute();
 const router = useRouter();
@@ -61,22 +62,11 @@ const verificarCodigo = async () => {
   errorMsg.value = '';
 
   try {
-    const res = await fetch('/api/verificar-codigo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ correo: correo.value, codigo: codigo.value })
-    });
-
-    const data = await res.json();
-
-    if (res.ok) {
-      alert('¡Cuenta activada con éxito! Ahora puedes iniciar sesión.');
-      router.push('/login');
-    } else {
-      errorMsg.value = data.error || 'Código inválido.';
-    }
+    await axios.post('/api/verificar-codigo', { correo: correo.value, codigo: codigo.value });
+    alert('¡Cuenta activada con éxito! Ahora puedes iniciar sesión.');
+    router.push('/login');
   } catch (e) {
-    errorMsg.value = 'Error al verificar el código.';
+    errorMsg.value = e.response?.data?.error || 'Código inválido.';
   } finally {
     cargando.value = false;
   }

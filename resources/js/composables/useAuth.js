@@ -30,7 +30,7 @@ export function useAuth() {
             // ✅ RUTA CORREGIDA: /api/logout
             await axios.post('/api/logout');
         } catch (error) {
-            console.error('Error al cerrar sesión en el servidor:', error);
+            // El logout del cliente debe completarse aunque la petición al servidor falle.
         } finally {
             // Limpiamos el estado en el cliente
             user.value = null;

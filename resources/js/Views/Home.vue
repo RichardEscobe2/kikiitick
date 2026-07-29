@@ -1,7 +1,11 @@
 <template>
   <!-- Contenedor Principal: Centrado y con márgenes laterales responsivos -->
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10 pb-12">
-    
+
+    <div v-if="errorMsg" class="p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm rounded-r-xl text-center">
+      {{ errorMsg }}
+    </div>
+
     <!-- BARRA DE BÚSQUEDA Y FILTROS -->
     <section class="max-w-xl mx-auto my-2">
       <div class="flex items-center bg-white p-1.5 pl-4 rounded-full border border-gray-200 shadow-sm focus-within:ring-2 focus-within:ring-indigo-600 focus-within:border-transparent transition-all">
@@ -153,22 +157,22 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import EventCard from '../Components/EventCard.vue';
+import { axios } from '../composables/useAuth';
 
 const eventos = ref([]);
 const busqueda = ref('');
 const categoriaSeleccionada = ref('');
 const mostrarTodosGrid = ref(false); // Estado para alternar entre carrusel y cuadrícula
 const carruselRef = ref(null);
+const errorMsg = ref('');
 
 // Cargar los eventos desde la API de Laravel
 const cargarEventos = async () => {
   try {
-    const response = await fetch('/api/eventos');
-    if (response.ok) {
-      eventos.value = await response.json();
-    }
+    const response = await axios.get('/api/eventos');
+    eventos.value = response.data;
   } catch (error) {
-    console.error('Error al obtener los eventos:', error);
+    errorMsg.value = 'No se pudieron cargar los eventos. Intenta recargar la página.';
   }
 };
 

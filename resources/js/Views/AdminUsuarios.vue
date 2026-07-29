@@ -96,6 +96,10 @@
       <span>{{ mensaje }}</span>
       <button @click="mensaje = ''" class="text-emerald-500 hover:text-emerald-800 font-bold">✕</button>
     </div>
+    <div v-if="errorGeneral" class="mb-4 p-4 bg-red-50 text-red-700 text-sm rounded-xl border border-red-200 flex justify-between items-center">
+      <span>{{ errorGeneral }}</span>
+      <button @click="errorGeneral = ''" class="text-red-500 hover:text-red-800 font-bold">✕</button>
+    </div>
 
     <!-- PESTAÑA 1: TABLA DE USUARIOS -->
     <div v-if="pestañaActiva === 'usuarios'">
@@ -365,6 +369,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { axios } from '../composables/useAuth';
 
 // Estado General
 const pestañaActiva = ref('usuarios'); // 'usuarios' | 'solicitudes'
@@ -374,6 +379,7 @@ const cargando = ref(true);
 const cargandoSolicitudes = ref(false);
 const procesandoAccion = ref(null);
 const mensaje = ref('');
+const errorGeneral = ref('');
 
 // Estado de Búsqueda y Filtros
 const busqueda = ref('');
@@ -431,12 +437,10 @@ const limpiarFiltros = () => {
 const cargarUsuarios = async () => {
   cargando.value = true;
   try {
-    const res = await fetch('/api/admin/usuarios');
-    if (res.ok) {
-      usuarios.value = await res.json();
-    }
+    const res = await axios.get('/api/admin/usuarios');
+    usuarios.value = res.data;
   } catch (err) {
-    console.error('Error al cargar los usuarios:', err);
+    errorGeneral.value = 'Error al cargar los usuarios.';
   } finally {
     cargando.value = false;
   }
@@ -446,12 +450,10 @@ const cargarUsuarios = async () => {
 const cargarSolicitudes = async () => {
   cargandoSolicitudes.value = true;
   try {
-    const res = await fetch('/api/admin/solicitudes-organizador');
-    if (res.ok) {
-      solicitudes.value = await res.json();
-    }
+    const res = await axios.get('/api/admin/solicitudes-organizador');
+    solicitudes.value = res.data;
   } catch (err) {
-    console.error('Error al cargar solicitudes:', err);
+    errorGeneral.value = 'Error al cargar solicitudes.';
   } finally {
     cargandoSolicitudes.value = false;
   }
@@ -465,20 +467,15 @@ const recargarTodo = () => {
 // Actualizar Rol (Original)
 const actualizarRol = async (id, nuevoRol) => {
   mensaje.value = '';
+  errorGeneral.value = '';
   try {
-    const res = await fetch(`/api/admin/usuarios/${id}/rol`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rol: nuevoRol })
-    });
+    await axios.put(`/api/admin/usuarios/${id}/rol`, { rol: nuevoRol });
 
-    if (res.ok) {
-      mensaje.value = `El rol del usuario #${id} fue actualizado a "${nuevoRol}" con éxito.`;
-      const idx = usuarios.value.findIndex(u => u.id === id);
-      if (idx !== -1) usuarios.value[idx].rol = nuevoRol;
-    }
+    mensaje.value = `El rol del usuario #${id} fue actualizado a "${nuevoRol}" con éxito.`;
+    const idx = usuarios.value.findIndex(u => u.id === id);
+    if (idx !== -1) usuarios.value[idx].rol = nuevoRol;
   } catch (err) {
-    console.error('Error al actualizar rol:', err);
+    errorGeneral.value = err.response?.data?.message || 'Error al actualizar el rol del usuario.';
   }
 };
 
@@ -487,23 +484,14 @@ const eliminarUsuario = async (id, correo) => {
   if (!confirm(`¿Estás seguro de eliminar lógicamente al usuario #${id} (${correo})?`)) return;
 
   mensaje.value = '';
+  errorGeneral.value = '';
   try {
-    const res = await fetch(`/api/admin/usuarios/${id}`, {
-      method: 'DELETE',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
+    await axios.delete(`/api/admin/usuarios/${id}`);
 
-    if (res.ok) {
-      mensaje.value = `El usuario #${id} ha sido desactivado (borrado lógico).`;
-      usuarios.value = usuarios.value.filter(u => String(u.id) !== String(id));
-    } else {
-      alert('Error al intentar eliminar el usuario.');
-    }
+    mensaje.value = `El usuario #${id} ha sido desactivado (borrado lógico).`;
+    usuarios.value = usuarios.value.filter(u => String(u.id) !== String(id));
   } catch (err) {
-    console.error('Error al eliminar usuario:', err);
+    errorGeneral.value = err.response?.data?.message || 'Error al intentar eliminar el usuario.';
   }
 };
 
@@ -511,26 +499,15 @@ const eliminarUsuario = async (id, correo) => {
 const aprobarOrganizador = async (id) => {
   procesandoAccion.value = id;
   mensaje.value = '';
+  errorGeneral.value = '';
   try {
-    const res = await fetch(`/api/admin/organizador/${id}/aprobar`, {
-      method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
+    const res = await axios.put(`/api/admin/organizador/${id}/aprobar`);
 
-    const data = await res.json();
-
-    if (res.ok) {
-      mensaje.value = data.mensaje || 'Solicitud aprobada con éxito. Se envió correo de notificación.';
-      solicitudes.value = solicitudes.value.filter(s => s.id !== id);
-      cargarUsuarios(); // Recargar la tabla de usuarios para reflejar el nuevo rol
-    } else {
-      alert('Error al aprobar la solicitud.');
-    }
+    mensaje.value = res.data.mensaje || 'Solicitud aprobada con éxito. Se envió correo de notificación.';
+    solicitudes.value = solicitudes.value.filter(s => s.id !== id);
+    cargarUsuarios(); // Recargar la tabla de usuarios para reflejar el nuevo rol
   } catch (err) {
-    console.error('Error al aprobar organizador:', err);
+    errorGeneral.value = err.response?.data?.mensaje || err.response?.data?.message || 'Error al aprobar la solicitud.';
   } finally {
     procesandoAccion.value = null;
   }
@@ -542,25 +519,14 @@ const rechazarOrganizador = async (id) => {
 
   procesandoAccion.value = id;
   mensaje.value = '';
+  errorGeneral.value = '';
   try {
-    const res = await fetch(`/api/admin/organizador/${id}/rechazar`, {
-      method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
+    const res = await axios.put(`/api/admin/organizador/${id}/rechazar`);
 
-    const data = await res.json();
-
-    if (res.ok) {
-      mensaje.value = data.mensaje || 'Solicitud rechazada.';
-      solicitudes.value = solicitudes.value.filter(s => s.id !== id);
-    } else {
-      alert('Error al rechazar la solicitud.');
-    }
+    mensaje.value = res.data.mensaje || 'Solicitud rechazada.';
+    solicitudes.value = solicitudes.value.filter(s => s.id !== id);
   } catch (err) {
-    console.error('Error al rechazar organizador:', err);
+    errorGeneral.value = err.response?.data?.mensaje || err.response?.data?.message || 'Error al rechazar la solicitud.';
   } finally {
     procesandoAccion.value = null;
   }
@@ -590,25 +556,17 @@ const guardarNuevaContrasena = async () => {
   errorModal.value = '';
 
   try {
-    const res = await fetch(`/api/admin/usuarios/${usuarioSeleccionado.value.id}/contrasena`, {
-      method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ contrasena: nuevaContrasena.value })
+    await axios.put(`/api/admin/usuarios/${usuarioSeleccionado.value.id}/contrasena`, {
+      contrasena: nuevaContrasena.value
     });
 
-    const data = await res.json();
-
-    if (res.ok) {
-      mensaje.value = `Contraseña actualizada con éxito para ${usuarioSeleccionado.value.correo}.`;
-      cerrarModal();
-    } else {
-      errorModal.value = data.message || data.error || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al actualizar contraseña.');
-    }
+    mensaje.value = `Contraseña actualizada con éxito para ${usuarioSeleccionado.value.correo}.`;
+    cerrarModal();
   } catch (err) {
-    errorModal.value = 'Ocurrió un error de conexión con el servidor.';
+    const data = err.response?.data;
+    errorModal.value = data
+      ? (data.message || data.error || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al actualizar contraseña.'))
+      : 'Ocurrió un error de conexión con el servidor.';
   } finally {
     guardandoPassword.value = false;
   }

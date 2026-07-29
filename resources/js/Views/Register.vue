@@ -164,6 +164,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { axios } from '../composables/useAuth';
 
 const router = useRouter();
 const cargando = ref(false);
@@ -232,26 +233,18 @@ const handleSubmit = async () => {
   errorMsg.value = '';
 
   try {
-    const res = await fetch('/api/registro', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form.value)
-    });
-
-    const data = await res.json();
-
-    if (res.ok) {
-      router.push({ name: 'VerificarCodigo', query: { correo: form.value.correo } });
-    } else {
-      if (data.errors) {
-        const primerosErrores = Object.values(data.errors).flat();
-        errorMsg.value = primerosErrores[0] || 'Error de validación.';
-      } else {
-        errorMsg.value = data.error || data.message || 'Error al registrar la cuenta.';
-      }
-    }
+    await axios.post('/api/registro', form.value);
+    router.push({ name: 'VerificarCodigo', query: { correo: form.value.correo } });
   } catch (err) {
-    errorMsg.value = 'Ocurrió un problema de conexión con el servidor.';
+    const data = err.response?.data;
+    if (data?.errors) {
+      const primerosErrores = Object.values(data.errors).flat();
+      errorMsg.value = primerosErrores[0] || 'Error de validación.';
+    } else if (data) {
+      errorMsg.value = data.error || data.message || 'Error al registrar la cuenta.';
+    } else {
+      errorMsg.value = 'Ocurrió un problema de conexión con el servidor.';
+    }
   } finally {
     cargando.value = false;
   }
