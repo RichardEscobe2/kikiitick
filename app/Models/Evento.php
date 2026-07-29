@@ -44,7 +44,7 @@ class Evento extends Model
     }
 
     public function asientosEvento()
-{
-    return $this->hasMany(AsientoEvento::class, 'evento_id');
-}
+    {
+        return $this->hasMany(AsientoEvento::class, 'evento_id');
+    }
 }

@@ -68,7 +68,7 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuth } from '../composables/useAuth';
+import { useAuth, axios } from '../composables/useAuth';
 
 const router = useRouter();
 const { fetchUser } = useAuth();
@@ -85,39 +85,32 @@ const handleLogin = async () => {
   errorMsg.value = '';
 
   try {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form.value)
-    });
+    const response = await axios.post('/api/login', form.value);
+    const data = response.data;
 
-    const data = await res.json();
+    localStorage.setItem('usuario_kikiitick', JSON.stringify(data.user));
 
-    if (res.ok) {
-      localStorage.setItem('usuario_kikiitick', JSON.stringify(data.user));
+    if (typeof fetchUser === 'function') {
+      await fetchUser();
+    }
 
-      if (typeof fetchUser === 'function') {
-        await fetchUser();
-      }
-
-      const rol = data.user?.rol;
-      if (rol === 'admin') {
-        router.push({ name: 'AdminUsuarios' });
-      } else if (rol === 'organizador') {
-        router.push({ name: 'Organizador' });
-      } else {
-        router.push({ name: 'Home' });
-      }
-
+    const rol = data.user?.rol;
+    if (rol === 'admin') {
+      router.push({ name: 'AdminUsuarios' });
+    } else if (rol === 'organizador') {
+      router.push({ name: 'Organizador' });
     } else {
-      if (data.requiere_verificacion) {
-        router.push({ name: 'VerificarCodigo', query: { correo: data.correo } });
-      } else {
-        errorMsg.value = data.error || 'Credenciales inválidas.';
-      }
+      router.push({ name: 'Home' });
     }
   } catch (e) {
-    errorMsg.value = 'Ocurrió un error de conexión.';
+    const data = e.response?.data;
+    if (data?.requiere_verificacion) {
+      router.push({ name: 'VerificarCodigo', query: { correo: data.correo } });
+    } else if (data) {
+      errorMsg.value = data.error || 'Credenciales inválidas.';
+    } else {
+      errorMsg.value = 'Ocurrió un error de conexión.';
+    }
   } finally {
     cargando.value = false;
   }

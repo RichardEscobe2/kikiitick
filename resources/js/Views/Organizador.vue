@@ -747,6 +747,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import { axios } from '../composables/useAuth';
 
 const tabActual = ref('recintos');
 const recintos = ref([]);
@@ -925,8 +926,8 @@ const rangoTieneSolapamiento = computed(() => {
 const cargarTeatros = async () => {
   cargando.value = true;
   try {
-    const res = await fetch('/api/organizador/teatros', { headers: { 'Accept': 'application/json' } });
-    if (res.ok) recintos.value = await res.json();
+    const res = await axios.get('/api/organizador/teatros');
+    recintos.value = res.data;
   } catch (err) {
     mensajeError.value = 'Error de conexión al cargar recintos.';
   } finally {
@@ -937,8 +938,8 @@ const cargarTeatros = async () => {
 const cargarEventos = async () => {
   cargandoEventos.value = true;
   try {
-    const res = await fetch('/api/organizador/eventos', { headers: { 'Accept': 'application/json' } });
-    if (res.ok) eventos.value = await res.json();
+    const res = await axios.get('/api/organizador/eventos');
+    eventos.value = res.data;
   } catch (err) {
     mensajeError.value = 'Error de conexión al cargar eventos.';
   } finally {
@@ -992,24 +993,18 @@ const guardarRecinto = async () => {
   };
 
   const url = modoEdicionRecinto.value ? `/api/organizador/teatros/${recintoIdEdicion.value}` : '/api/organizador/teatros';
-  const method = modoEdicionRecinto.value ? 'PUT' : 'POST';
+  const method = modoEdicionRecinto.value ? 'put' : 'post';
 
   try {
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (res.ok) {
-      mensajeExito.value = data.message;
-      modalRecintoVisible.value = false;
-      await cargarTeatros();
-    } else {
-      mensajeError.value = data.message || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al guardar.');
-    }
+    const res = await axios[method](url, payload);
+    mensajeExito.value = res.data.message;
+    modalRecintoVisible.value = false;
+    await cargarTeatros();
   } catch (err) {
-    mensajeError.value = 'Error de conexión.';
+    const data = err.response?.data;
+    mensajeError.value = data
+      ? (data.message || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al guardar.'))
+      : 'Error de conexión.';
   } finally {
     enviandoForm.value = false;
   }
@@ -1018,16 +1013,11 @@ const guardarRecinto = async () => {
 const eliminarRecinto = async (id) => {
   if (!confirm('¿Deseas eliminar este recinto?')) return;
   try {
-    const res = await fetch(`/api/organizador/teatros/${id}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
-    const data = await res.json();
-    if (res.ok) {
-      mensajeExito.value = data.message;
-      await cargarTeatros();
-    } else {
-      mensajeError.value = data.message;
-    }
+    const res = await axios.delete(`/api/organizador/teatros/${id}`);
+    mensajeExito.value = res.data.message;
+    await cargarTeatros();
   } catch (err) {
-    mensajeError.value = 'Error al eliminar.';
+    mensajeError.value = err.response?.data?.message || 'Error al eliminar.';
   }
 };
 
@@ -1052,27 +1042,22 @@ const guardarZona = async () => {
   mensajeError.value = '';
 
   try {
-    const res = await fetch(`/api/organizador/teatros/${recintoSeleccionado.value.id}/zonas`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(formZona.value)
-    });
-    const data = await res.json();
-    if (res.ok) {
-      recintoSeleccionado.value = data.teatro;
-      const idx = recintos.value.findIndex(r => r.id === data.teatro.id);
-      if (idx !== -1) recintos.value[idx] = data.teatro;
+    const res = await axios.post(`/api/organizador/teatros/${recintoSeleccionado.value.id}/zonas`, formZona.value);
+    const data = res.data;
+    recintoSeleccionado.value = data.teatro;
+    const idx = recintos.value.findIndex(r => r.id === data.teatro.id);
+    if (idx !== -1) recintos.value[idx] = data.teatro;
 
-      const filas = filasDisponiblesRecinto.value;
-      const primeraLibre = filas.find(f => !filasAsignadasMap.value[f]) || filas[0] || 'A';
-      formZona.value.nombre_zona = '';
-      formZona.value.fila_inicio = primeraLibre;
-      formZona.value.fila_fin = primeraLibre;
-    } else {
-      mensajeError.value = data.message || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al guardar zona.');
-    }
+    const filas = filasDisponiblesRecinto.value;
+    const primeraLibre = filas.find(f => !filasAsignadasMap.value[f]) || filas[0] || 'A';
+    formZona.value.nombre_zona = '';
+    formZona.value.fila_inicio = primeraLibre;
+    formZona.value.fila_fin = primeraLibre;
   } catch (err) {
-    mensajeError.value = 'Error al crear zona.';
+    const data = err.response?.data;
+    mensajeError.value = data
+      ? (data.message || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al guardar zona.'))
+      : 'Error al crear zona.';
   } finally {
     enviandoZona.value = false;
   }
@@ -1081,17 +1066,13 @@ const guardarZona = async () => {
 const eliminarZona = async (zonaId) => {
   if (!confirm('¿Eliminar esta zona y liberar sus filas asignadas?')) return;
   try {
-    const res = await fetch(`/api/organizador/zonas/${zonaId}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
-    const data = await res.json();
-    if (res.ok) {
-      recintoSeleccionado.value = data.teatro;
-      const idx = recintos.value.findIndex(r => r.id === data.teatro.id);
-      if (idx !== -1) recintos.value[idx] = data.teatro;
-    } else {
-      mensajeError.value = data.message;
-    }
+    const res = await axios.delete(`/api/organizador/zonas/${zonaId}`);
+    const data = res.data;
+    recintoSeleccionado.value = data.teatro;
+    const idx = recintos.value.findIndex(r => r.id === data.teatro.id);
+    if (idx !== -1) recintos.value[idx] = data.teatro;
   } catch (err) {
-    mensajeError.value = 'Error al eliminar zona.';
+    mensajeError.value = err.response?.data?.message || 'Error al eliminar zona.';
   }
 };
 
@@ -1154,20 +1135,17 @@ const guardarEvento = async () => {
   else if (formEvento.value.imagen_url) formData.append('imagen_url', formEvento.value.imagen_url);
 
   try {
-    const res = await fetch(url, { method: 'POST', headers: { 'Accept': 'application/json' }, body: formData });
-    const data = await res.json();
-
-    if (res.ok) {
-      mensajeExito.value = data.message;
-      modalEventoVisible.value = false;
-      archivoImagen.value = null;
-      imagenPreview.value = null;
-      await cargarEventos();
-    } else {
-      mensajeError.value = data.message || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al guardar evento.');
-    }
+    const res = await axios.post(url, formData);
+    mensajeExito.value = res.data.message;
+    modalEventoVisible.value = false;
+    archivoImagen.value = null;
+    imagenPreview.value = null;
+    await cargarEventos();
   } catch (err) {
-    mensajeError.value = 'Error de conexión con el servidor.';
+    const data = err.response?.data;
+    mensajeError.value = data
+      ? (data.message || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al guardar evento.'))
+      : 'Error de conexión con el servidor.';
   } finally {
     enviandoEvento.value = false;
   }
@@ -1176,16 +1154,11 @@ const guardarEvento = async () => {
 const eliminarEvento = async (id) => {
   if (!confirm('¿Estás seguro de eliminar este evento?')) return;
   try {
-    const res = await fetch(`/api/organizador/eventos/${id}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
-    const data = await res.json();
-    if (res.ok) {
-      mensajeExito.value = data.message;
-      await cargarEventos();
-    } else {
-      mensajeError.value = data.message;
-    }
+    const res = await axios.delete(`/api/organizador/eventos/${id}`);
+    mensajeExito.value = res.data.message;
+    await cargarEventos();
   } catch (err) {
-    mensajeError.value = 'Error al eliminar evento.';
+    mensajeError.value = err.response?.data?.message || 'Error al eliminar evento.';
   }
 };
 
@@ -1196,15 +1169,10 @@ const abrirModalPrecios = async (evento) => {
   modalPreciosVisible.value = true;
 
   try {
-    const res = await fetch(`/api/organizador/eventos/${evento.id}/precios`, { headers: { 'Accept': 'application/json' } });
-    const data = await res.json();
-    if (res.ok) listaPreciosZona.value = data.precios;
-    else {
-      mensajeError.value = data.message || 'Error al cargar las tarifas del evento.';
-      modalPreciosVisible.value = false;
-    }
+    const res = await axios.get(`/api/organizador/eventos/${evento.id}/precios`);
+    listaPreciosZona.value = res.data.precios;
   } catch (err) {
-    mensajeError.value = 'Error de conexión al cargar tarifas.';
+    mensajeError.value = err.response?.data?.message || (err.response ? 'Error al cargar las tarifas del evento.' : 'Error de conexión al cargar tarifas.');
     modalPreciosVisible.value = false;
   } finally {
     cargandoPrecios.value = false;
@@ -1224,22 +1192,15 @@ const guardarPrecios = async () => {
       }))
     };
 
-    const res = await fetch(`/api/organizador/eventos/${eventoPreciosSeleccionado.value.id}/precios`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await res.json();
-    if (res.ok) {
-      mensajeExito.value = data.message;
-      modalPreciosVisible.value = false;
-      await cargarEventos();
-    } else {
-      mensajeError.value = data.message || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al guardar tarifas.');
-    }
+    const res = await axios.post(`/api/organizador/eventos/${eventoPreciosSeleccionado.value.id}/precios`, payload);
+    mensajeExito.value = res.data.message;
+    modalPreciosVisible.value = false;
+    await cargarEventos();
   } catch (err) {
-    mensajeError.value = 'Error de conexión al guardar tarifas.';
+    const data = err.response?.data;
+    mensajeError.value = data
+      ? (data.message || (data.errors ? Object.values(data.errors).flat()[0] : 'Error al guardar tarifas.'))
+      : 'Error de conexión al guardar tarifas.';
   } finally {
     enviandoPrecios.value = false;
   }

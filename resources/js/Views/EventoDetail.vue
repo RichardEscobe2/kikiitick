@@ -2,6 +2,14 @@
   <div class="min-h-screen bg-gray-50 py-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
+      <!-- Mensajes Globales -->
+      <div v-if="successMsg" class="mb-4 p-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 text-sm rounded-r-xl">
+        {{ successMsg }}
+      </div>
+      <div v-if="errorMsg" class="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm rounded-r-xl">
+        {{ errorMsg }}
+      </div>
+
       <!-- Estado Cargando -->
       <div v-if="cargando" class="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
         <div class="inline-block animate-spin text-4xl mb-3">🎟️</div>
@@ -318,12 +326,15 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { axios } from '../composables/useAuth';
 
 const route = useRoute();
 const router = useRouter();
 
 const cargando = ref(true);
 const error = ref('');
+const errorMsg = ref('');
+const successMsg = ref('');
 
 const evento = ref(null);
 const teatro = ref(null);
@@ -434,40 +445,36 @@ const cargarMapa = async () => {
   cargando.value = true;
   error.value = '';
   try {
-    const res = await fetch(`/api/eventos/${route.params.id}/mapa`, {
-      headers: { 'Accept': 'application/json' }
+    const response = await axios.get(`/api/eventos/${route.params.id}/mapa`);
+    const data = response.data;
+
+    evento.value = data.evento;
+    teatro.value = data.teatro;
+
+    // 1. Asignar paleta de colores a las zonas
+    zonas.value = (data.zonas || []).map((z, idx) => {
+      const color = paletaColoresZona[idx % paletaColoresZona.length];
+      return {
+        ...z,
+        color_bg: color.bg,
+        color_border: color.border
+      };
     });
-    const data = await res.json();
 
-    if (res.ok) {
-      evento.value = data.evento;
-      teatro.value = data.teatro;
-      
-      // 1. Asignar paleta de colores a las zonas
-      zonas.value = (data.zonas || []).map((z, idx) => {
-        const color = paletaColoresZona[idx % paletaColoresZona.length];
-        return {
-          ...z,
-          color_bg: color.bg,
-          color_border: color.border
-        };
-      });
-
-      // 2. Mapear asientos asociando color, nombre de zona y precio real
-      asientosMaster.value = (data.asientos || []).map(asiento => {
-        const z = obtenerZonaDeAsiento(asiento);
-        return {
-          ...asiento,
-          nombre_zona: z ? z.nombre_zona : 'General',
-          color_zona: z ? z.color_bg : '#059669',
-          precio_base: asiento.precio_base || (z ? z.precio_base : 0)
-        };
-      });
-    } else {
-      error.value = data.message || 'Error al obtener datos del recinto.';
-    }
+    // 2. Mapear asientos asociando color, nombre de zona y precio real
+    asientosMaster.value = (data.asientos || []).map(asiento => {
+      const z = obtenerZonaDeAsiento(asiento);
+      return {
+        ...asiento,
+        nombre_zona: z ? z.nombre_zona : 'General',
+        color_zona: z ? z.color_bg : '#059669',
+        precio_base: asiento.precio_base || (z ? z.precio_base : 0)
+      };
+    });
   } catch (err) {
-    error.value = 'Error de conexión con el servidor.';
+    error.value = err.response
+      ? (err.response.data?.message || 'Error al obtener datos del recinto.')
+      : 'Error de conexión con el servidor.';
   } finally {
     cargando.value = false;
   }
@@ -528,29 +535,19 @@ const procesarReserva = async () => {
   if (asientosSeleccionados.value.length === 0) return;
 
   reservando.value = true;
+  errorMsg.value = '';
   try {
-    const response = await fetch('/api/boletos/reservar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        evento_id: evento.value.id,
-        asiento_ids: asientosSeleccionados.value.map(a => a.id)
-      })
+    await axios.post('/api/boletos/reservar', {
+      evento_id: evento.value.id,
+      asiento_ids: asientosSeleccionados.value.map(a => a.id)
     });
 
-    const data = await response.json();
-
-    if (response.ok) {
-      reservaExito.value = true;
-      iniciarTemporizador();
-    } else {
-      alert(data.message || 'No se pudieron reservar los asientos.');
-    }
+    reservaExito.value = true;
+    iniciarTemporizador();
   } catch (err) {
-    alert('Ocurrió un error de conexión al apartar los asientos.');
+    errorMsg.value = err.response
+      ? (err.response.data?.message || 'No se pudieron reservar los asientos.')
+      : 'Ocurrió un error de conexión al apartar los asientos.';
   } finally {
     reservando.value = false;
   }
@@ -565,7 +562,7 @@ const iniciarTemporizador = () => {
       tiempoRestante.value--;
     } else {
       clearInterval(intervalTimer);
-      alert('Tu tiempo de reserva expiró. Los asientos han sido liberados.');
+      errorMsg.value = 'Tu tiempo de reserva expiró. Los asientos han sido liberados.';
       reservaExito.value = false;
       asientosSeleccionados.value = [];
       cargarMapa();
@@ -580,30 +577,20 @@ const tiempoFormateado = computed(() => {
 });
 
 const confirmarPago = async () => {
+  errorMsg.value = '';
   try {
-    const response = await fetch('/api/boletos/comprar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        evento_id: evento.value.id,
-        asiento_ids: asientosSeleccionados.value.map(a => a.id)
-      })
+    const response = await axios.post('/api/boletos/comprar', {
+      evento_id: evento.value.id,
+      asiento_ids: asientosSeleccionados.value.map(a => a.id)
     });
 
-    const data = await response.json();
-
-    if (response.ok) {
-      if (intervalTimer) clearInterval(intervalTimer);
-      alert(`🎉 ¡Felicidades! Compra realizada con éxito. Folio de venta #${data.venta_id}`);
-      router.push({ name: 'Perfil' });
-    } else {
-      alert(data.message || 'Ocurrió un problema al procesar el pago.');
-    }
+    if (intervalTimer) clearInterval(intervalTimer);
+    successMsg.value = `🎉 ¡Felicidades! Compra realizada con éxito. Folio de venta #${response.data.venta_id}`;
+    setTimeout(() => router.push({ name: 'Perfil' }), 1500);
   } catch (err) {
-    alert('Error al conectar con el servicio de procesamiento de pago.');
+    errorMsg.value = err.response
+      ? (err.response.data?.message || 'Ocurrió un problema al procesar el pago.')
+      : 'Error al conectar con el servicio de procesamiento de pago.';
   }
 };
 

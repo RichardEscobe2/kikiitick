@@ -2,6 +2,8 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import router from '../router';
 
+export { axios };
+
 const user = ref(null);
 const loading = ref(true);
 

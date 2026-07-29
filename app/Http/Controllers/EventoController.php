@@ -57,12 +57,7 @@ class EventoController extends Controller
             return response()->json(['message' => 'No tienes permisos para crear un evento en este recinto.'], 403);
         }
 
-        $urlFinalImagen = $validated['imagen_url'] ?? null;
-
-        if ($request->hasFile('imagen')) {
-            $path = $request->file('imagen')->store('eventos', 'public');
-            $urlFinalImagen = asset('storage/' . $path);
-        }
+        $urlFinalImagen = $this->handleImageUpload($request) ?? ($validated['imagen_url'] ?? null);
 
         $evento = Evento::create([
             'teatro_id'             => $validated['teatro_id'],
@@ -107,9 +102,9 @@ class EventoController extends Controller
             'estatus'     => 'required|in:borrador,activo,finalizado'
         ]);
 
-        if ($request->hasFile('imagen')) {
-            $path = $request->file('imagen')->store('eventos', 'public');
-            $validated['imagen_url'] = asset('storage/' . $path);
+        $imagenSubida = $this->handleImageUpload($request);
+        if ($imagenSubida) {
+            $validated['imagen_url'] = $imagenSubida;
         }
 
         unset($validated['imagen']);
@@ -311,5 +306,19 @@ class EventoController extends Controller
             'zonas'    => $zonasResumen,
             'asientos' => $asientosMaster
         ], 200);
+    }
+
+    /**
+     * Sube la imagen del evento (si se envió una) y retorna su URL pública.
+     */
+    private function handleImageUpload(Request $request): ?string
+    {
+        if (! $request->hasFile('imagen')) {
+            return null;
+        }
+
+        $path = $request->file('imagen')->store('eventos', 'public');
+
+        return asset('storage/' . $path);
     }
 }
