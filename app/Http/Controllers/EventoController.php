@@ -51,6 +51,13 @@ class EventoController extends Controller
     {
         $usuario = $request->user();
 
+        // 🛡️ RN-02: bloquear publicación de eventos a organizadores no aprobados
+        if ($usuario->rol !== 'admin' && $usuario->estatus_organizador !== 'aprobado') {
+            return response()->json([
+                'message' => 'Tu cuenta de organizador no ha sido aprobada por un administrador.'
+            ], 403);
+        }
+
         $validated = $request->validate([
             'teatro_id'             => 'required|exists:teatros,id',
             'titulo'                => 'required|string|max:255',
@@ -149,6 +156,19 @@ class EventoController extends Controller
 
         if (!$evento) {
             return response()->json(['message' => 'Evento no encontrado o no autorizado.'], 404);
+        }
+
+        // 🛡️ RN-14: bloquear borrado si existen boletos reservados o vendidos
+        // (evita destruir en cascada registros de venta y accesos emitidos)
+        $tieneInventarioComprometido = DB::table('asientos_evento')
+            ->where('evento_id', $evento->id)
+            ->whereIn('estado', ['reservado', 'vendido'])
+            ->exists();
+
+        if ($tieneInventarioComprometido) {
+            return response()->json([
+                'message' => 'No se puede eliminar este evento: existen boletos reservados o vendidos. Esta acción destruiría registros de venta y accesos emitidos.'
+            ], 409);
         }
 
         $evento->delete();

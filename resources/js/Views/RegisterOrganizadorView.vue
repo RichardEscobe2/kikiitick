@@ -386,7 +386,7 @@ const handleSubmit = async () => {
     const data = await res.json();
 
     if (res.ok) {
-      router.push({ name: 'VerificarCodigo', query: { correo: form.value.correo, demo: data.codigo_demo } });
+      router.push({ name: 'VerificarCodigo', query: { correo: form.value.correo } });
     } else {
       if (data.errors) {
         const primerosErrores = Object.values(data.errors).flat();
