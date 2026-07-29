@@ -345,7 +345,7 @@ const asientosSeleccionados = ref([]);
 
 const reservando = ref(false);
 const reservaExito = ref(false);
-const tiempoRestante = ref(600);
+const tiempoRestante = ref(300);
 let intervalTimer = null;
 
 // Paleta de colores vivos para diferenciar zonas
@@ -554,7 +554,7 @@ const procesarReserva = async () => {
 };
 
 const iniciarTemporizador = () => {
-  tiempoRestante.value = 600;
+  tiempoRestante.value = 300;
   if (intervalTimer) clearInterval(intervalTimer);
 
   intervalTimer = setInterval(() => {
