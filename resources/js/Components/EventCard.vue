@@ -40,10 +40,7 @@ const router = useRouter();
 
 const irAlEvento = () => {
   if (props.evento && props.evento.id) {
-    console.log('🚀 Redirigiendo a evento con ID:', props.evento.id);
     router.push({ name: 'EventoDetail', params: { id: props.evento.id } });
-  } else {
-    console.error('⚠️ El objeto evento no tiene un ID válido:', props.evento);
   }
 };
 </script>

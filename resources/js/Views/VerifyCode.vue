@@ -12,11 +12,6 @@
         <strong class="text-gray-800">{{ correo }}</strong>
       </p>
 
-      <!-- Mensaje para pruebas si viene el código demo -->
-      <div v-if="codigoDemo" class="my-3 p-2 bg-amber-50 text-amber-700 text-xs rounded-lg border border-amber-200">
-        🔑 <strong>Modo desarrollo:</strong> Tu código de prueba es: <strong>{{ codigoDemo }}</strong>
-      </div>
-
       <div v-if="errorMsg" class="my-3 p-2 bg-red-50 text-red-600 text-xs rounded-lg">
         {{ errorMsg }}
       </div>
@@ -53,14 +48,12 @@ const route = useRoute();
 const router = useRouter();
 
 const correo = ref('');
-const codigoDemo = ref('');
 const codigo = ref('');
 const cargando = ref(false);
 const errorMsg = ref('');
 
 onMounted(() => {
   correo.value = route.query.correo || '';
-  codigoDemo.value = route.query.demo || '';
 });
 
 const verificarCodigo = async () => {
