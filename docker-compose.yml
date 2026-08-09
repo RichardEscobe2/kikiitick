@@ -1,0 +1,142 @@
+# Orquestación de producción/staging para KikiiTick (Módulo 6).
+#
+# docker-compose lee automáticamente un archivo `.env` en este mismo directorio
+# para sustituir las variables ${...} de abajo — es DELIBERADO que sea el MISMO
+# .env que usa Laravel (ver .env.production.example como plantilla): así las
+# credenciales de MySQL solo se definen una vez, no se duplican entre el stack
+# de Docker y la configuración de la aplicación.
+#
+# Servicio 5 (queue-worker) no estaba en el pedido original de 4 servicios, pero
+# se agrega porque sin él la app queda con un bug operativo conocido y ya
+# documentado en el propio repo (claude.md/estado_modulo5.md): los correos de
+# confirmación de compra se despachan con Mail::queue() sobre QUEUE_CONNECTION
+# =database, y sin un worker consumiéndolos jamás se envían. Ver el reporte
+# final para el detalle de esta decisión.
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: kikiitick-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-kikiitick}
+      MYSQL_USER: ${DB_USERNAME:-kikiitick_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      # 🛡️ Contraseña de root DISTINTA a la del usuario de la app — nunca
+      # reutilizar DB_PASSWORD como contraseña de root.
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - kikiitick-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    # 🛡️ Sin `ports:` a propósito — el puerto 3306 nunca se publica al host,
+    # solo es alcanzable dentro de kikiitick-net (por `app`/`queue-worker`).
+    # Descomentar únicamente para depuración local puntual:
+    # ports:
+    #   - "3306:3306"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: kikiitick-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP — MAIL_HOST=mailpit / MAIL_PORT=1025 desde `app`
+      - "8025:8025" # UI web para inspeccionar correos capturados
+    networks:
+      - kikiitick-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/api/v1/info"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kikiitick-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    volumes:
+      # Compartidos con `web` (Nginx) — ver comentario de arriba y el de
+      # docker/nginx/default.conf sobre por qué se usan dos volúmenes con
+      # `alias` en vez de depender del symlink storage:link entre contenedores.
+      - app-public:/var/www/html/public
+      - app-storage-public:/var/www/html/storage/app/public
+      # Logs persistentes fuera del ciclo de vida del contenedor (útiles para
+      # `docker compose logs`/depuración incluso tras recrear el contenedor).
+      - app-storage-logs:/var/www/html/storage/logs
+    networks:
+      - kikiitick-net
+    # El HEALTHCHECK ya está definido en el Dockerfile (nc -z 127.0.0.1 9000).
+
+  queue-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kikiitick-queue-worker
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "--tries=3", "--backoff=5", "--max-time=3600", "--sleep=3"]
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    volumes:
+      - app-storage-logs:/var/www/html/storage/logs
+    networks:
+      - kikiitick-net
+    # Sin healthcheck HTTP (no expone puerto alguno): `--max-time=3600` hace que
+    # el propio proceso termine limpio cada hora y `restart: unless-stopped` lo
+    # vuelve a levantar — mecanismo simple de auto-recuperación sin necesitar un
+    # healthcheck dedicado.
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: kikiitick-web
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # :ro en `web` — Nginx solo necesita LEER estos archivos; solo `app`
+      # (dueño del proceso PHP que procesa los uploads) los monta en
+      # lectura-escritura.
+      - app-public:/var/www/html/public:ro
+      - app-storage-public:/var/www/html/storage/app/public:ro
+    networks:
+      - kikiitick-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/robots.txt"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  kikiitick-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  app-public:
+  app-storage-public:
+  app-storage-logs:

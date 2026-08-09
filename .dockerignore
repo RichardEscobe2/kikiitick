@@ -1,0 +1,61 @@
+# 🛡️ Nunca debe entrar al contexto de build ni a una capa de imagen: .env real
+# (credenciales de Mercado Pago, DB, etc.) — solo las plantillas .env.example
+# quedan disponibles, y ni siquiera esas las usa el Dockerfile.
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+.git
+.gitignore
+.github
+
+node_modules
+npm-debug.log
+
+vendor
+composer.phar
+
+# Se regenera dentro de la etapa 1 del Dockerfile (frontend-build) — no tiene
+# sentido copiar un build local potencialmente desactualizado o hecho con
+# variables de entorno distintas a las del contenedor.
+public/build
+public/hot
+
+# 🛡️🐛 Encontrado con un `docker build` real durante la validación de esta
+# tarea: `php artisan storage:link` ya corrido en el host local deja
+# public/storage como un symlink a una ruta ABSOLUTA del host (ej.
+# /home/usuario/kikiitick/storage/app/public). Docker copia symlinks tal cual
+# (no su contenido), así que ese enlace roto entraba al build context y
+# rompía `storage:link --force` dentro del contenedor con "symlink(): No such
+# file or directory". Se regenera siempre en el entrypoint, nunca debe venir
+# del host.
+public/storage
+
+# 🛡️🐛 Encontrado con un `docker build` real durante la validación de esta
+# tarea: excluir "storage/app/*" y luego intentar recuperar "storage/app/public"
+# con "!" rompió `php artisan storage:link` (symlink(): No such file or
+# directory) — .dockerignore NO puede reincluir de forma fiable un subdirectorio
+# cuyo padre ya fue excluido (limitación conocida y documentada de Docker). Por
+# eso storage/app/ NO se toca aquí: solo se excluyen archivos puntuales
+# regenerables en runtime, sin patrones anidados con negación.
+storage/*.key
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/testing/*
+storage/framework/views/*
+storage/logs/*.log
+
+tests
+.phpunit.result.cache
+phpunit.xml
+
+.idea
+.vscode
+*.log
+
+.agents
+*.md
+!README.md
+
+database/database.sqlite
