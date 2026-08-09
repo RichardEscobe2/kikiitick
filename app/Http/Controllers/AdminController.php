@@ -25,7 +25,8 @@ class AdminController extends Controller
     public function cambiarRol(Request $request, $id)
     {
         $request->validate([
-            'rol' => 'required|in:cliente,organizador,admin' // 👈 Actualizado a 'cliente'
+            // 'vendedor' (Módulo 5, RF-10/RN-09): personal autorizado para vender en taquilla
+            'rol' => 'required|in:cliente,organizador,admin,vendedor'
         ]);
 
         $usuario = User::findOrFail($id);

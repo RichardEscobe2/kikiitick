@@ -160,12 +160,14 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 
 const route = useRoute();
 const router = useRouter();
+
+let redirectTimer = null;
 
 const correo = ref(route.query.email || '');
 const codigo = ref('');
@@ -214,9 +216,9 @@ const handleResetPassword = async () => {
     });
 
     success.value = response.data.message;
-    
+
     // Redirección automática al Login tras 2.5 segundos
-    setTimeout(() => {
+    redirectTimer = setTimeout(() => {
       irAlLogin();
     }, 2500);
 
@@ -240,4 +242,8 @@ const reenviarCodigo = async () => {
     error.value = err.response?.data?.message || 'No se pudo reenviar el código.';
   }
 };
+
+onUnmounted(() => {
+  if (redirectTimer) clearTimeout(redirectTimer);
+});
 </script>

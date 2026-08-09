@@ -10,6 +10,9 @@ const loading = ref(true);
 export function useAuth() {
     const isAuthenticated = computed(() => !!user.value);
     const userRole = computed(() => user.value?.rol || user.value?.role || 'cliente');
+    const isAdmin = computed(() => userRole.value === 'admin');
+    const isOrganizador = computed(() => userRole.value === 'organizador');
+    const isVendedor = computed(() => userRole.value === 'vendedor');
 
     // 1. Obtener usuario actual
     const fetchUser = async () => {
@@ -35,7 +38,11 @@ export function useAuth() {
             // Limpiamos el estado en el cliente
             user.value = null;
             loading.value = false;
-            
+
+            // 🛡️ Elimina cualquier dato de sesión persistido en localStorage para no
+            // dejar nombre/correo/rol del usuario expuesto tras cerrar sesión.
+            localStorage.removeItem('usuario_kikiitick');
+
             // Redirigimos a Login y recargamos para limpiar estados en memoria
             window.location.href = '/login';
         }
@@ -46,6 +53,9 @@ export function useAuth() {
         loading,
         isAuthenticated,
         userRole,
+        isAdmin,
+        isOrganizador,
+        isVendedor,
         fetchUser,
         logout
     };

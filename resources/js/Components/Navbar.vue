@@ -48,37 +48,72 @@
             </div>
           </div>
 
-          <!-- Opciones del Menú -->
-          <div class="py-2">
-            <router-link 
-              to="/perfil" 
-              @click="menuAbierto = false" 
+          <!-- 🏧 Menú aislado para cajeros: sin accesos de cliente/administración —
+               solo la identidad del turno (cajero + caja asignada) y cierre de sesión.
+               El cajero llega directo a /pos al iniciar sesión (Login.vue), así que
+               tampoco necesita un enlace de navegación duplicado aquí. -->
+          <div v-if="isVendedor" class="py-2">
+            <div class="px-4 py-2 text-xs text-gray-500">
+              <p class="font-semibold text-gray-700">🏧 Cajero: {{ user?.nombre }}</p>
+              <p>Caja: {{ user?.taquilla?.nombre || 'Sin asignar' }}</p>
+            </div>
+
+            <button
+              @click="handleLogout"
+              class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 border-t mt-1 transition font-medium"
+            >
+              🚪 Cerrar Sesión
+            </button>
+          </div>
+
+          <!-- Opciones del Menú (clientes, organizadores y administradores) -->
+          <div v-else class="py-2">
+            <router-link
+              to="/perfil"
+              @click="menuAbierto = false"
               class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition"
             >
               👤 Mi Perfil
             </router-link>
 
+            <router-link
+              to="/mis-boletos"
+              @click="menuAbierto = false"
+              class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition"
+            >
+              🎫 Mis Boletos
+            </router-link>
+
             <!-- Acceso directo si es Admin o Organizador -->
-            <router-link 
-              v-if="userRole === 'admin'" 
-              to="/admin/usuarios" 
-              @click="menuAbierto = false" 
+            <router-link
+              v-if="userRole === 'admin'"
+              to="/admin/usuarios"
+              @click="menuAbierto = false"
               class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition font-medium text-indigo-600"
             >
               ⚙️ Panel de Administración
             </router-link>
 
-            <router-link 
-              v-if="userRole === 'organizador'" 
-              to="/organizador" 
-              @click="menuAbierto = false" 
+            <router-link
+              v-if="userRole === 'organizador'"
+              to="/organizador"
+              @click="menuAbierto = false"
               class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition font-medium text-indigo-600"
             >
               🎪 Panel Organizador
             </router-link>
 
-            <button 
-              @click="handleLogout" 
+            <router-link
+              v-if="['organizador', 'admin'].includes(userRole)"
+              to="/pos"
+              @click="menuAbierto = false"
+              class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition font-medium text-emerald-700"
+            >
+              🏧 Taquilla (POS)
+            </router-link>
+
+            <button
+              @click="handleLogout"
               class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 border-t mt-1 transition font-medium"
             >
               🚪 Cerrar Sesión
@@ -96,7 +131,7 @@
 import { ref } from 'vue';
 import { useAuth } from '../composables/useAuth';
 
-const { user, isAuthenticated, userRole, logout } = useAuth();
+const { user, isAuthenticated, userRole, isVendedor, logout } = useAuth();
 const menuAbierto = ref(false);
 
 const handleLogout = () => {

@@ -40,7 +40,7 @@ const router = useRouter();
 
 const irAlEvento = () => {
   if (props.evento && props.evento.id) {
-    router.push({ name: 'EventoDetail', params: { id: props.evento.id } });
+    router.push({ name: 'EventoLanding', params: { id: props.evento.id } });
   }
 };
 </script>

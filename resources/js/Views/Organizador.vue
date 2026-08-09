@@ -20,11 +20,17 @@
           >
             🏛️ Mis Recintos
           </button>
-          <button 
+          <button
             @click="tabActual = 'eventos'"
             :class="['px-4 py-2 text-sm font-semibold rounded-lg transition-all', tabActual === 'eventos' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-600 hover:text-gray-900']"
           >
             🎟️ Mis Eventos
+          </button>
+          <button
+            @click="tabActual = 'taquillas'"
+            :class="['px-4 py-2 text-sm font-semibold rounded-lg transition-all', tabActual === 'taquillas' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-600 hover:text-gray-900']"
+          >
+            🏧 Taquillas y Cajeros
           </button>
         </div>
       </div>
@@ -268,6 +274,11 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- PESTAÑA 3: TAQUILLAS Y CAJEROS -->
+    <div v-if="tabActual === 'taquillas'">
+      <GestionTaquillas />
     </div>
 
     <!-- MODAL: REGISTRAR / EDITAR RECINTO -->
@@ -748,6 +759,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { axios } from '../composables/useAuth';
+import GestionTaquillas from './GestionTaquillas.vue';
 
 const tabActual = ref('recintos');
 const recintos = ref([]);

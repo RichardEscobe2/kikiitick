@@ -8,9 +8,16 @@
       Estamos preparando la cartelera para los mejores espectáculos. Vuelve pronto o sé de los primeros en publicar.
     </p>
     <div class="mt-6 flex justify-center gap-3">
-      <button class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-xl transition-all shadow-sm">
+      <button
+        @click="emit('cta-click')"
+        class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-xl transition-all shadow-sm"
+      >
         ¿Eres organizador? Crea un evento
       </button>
     </div>
   </div>
 </template>
+
+<script setup>
+const emit = defineEmits(['cta-click']);
+</script>

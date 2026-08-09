@@ -15,7 +15,12 @@ import Organizador from '../Views/Organizador.vue';
 import Perfil from '../Views/Perfil.vue';
 import ForgotPassword from '../Views/ForgotPasswordView.vue';
 import ResetPassword from '../Views/ResetPasswordView.vue';
-import EventoDetail from '../Views/EventoDetail.vue'; // <--- AGREGADO FASE 3
+import EventoLanding from '../Views/EventoLanding.vue';
+import EventoCheckout from '../Views/EventoCheckout.vue';
+import ConfirmacionCompra from '../Views/ConfirmacionCompra.vue';
+import FichaOxxo from '../Views/FichaOxxo.vue';
+import MisBoletos from '../Views/MisBoletos.vue';
+import POSTaquilla from '../Views/POSTaquilla.vue';
 
 const routes = [
     {
@@ -28,9 +33,31 @@ const routes = [
                 component: Home,
             },
             {
-                path: 'evento/:id', // <--- AGREGADO FASE 3
-                name: 'EventoDetail',
-                component: EventoDetail
+                // Módulo 5, Deliverable 3: landing informativa (sin selección de asiento)
+                path: 'evento/:id',
+                name: 'EventoLanding',
+                component: EventoLanding
+            },
+            {
+                // Checkout: mapa interactivo, reserva, y acordeón de pago. Sin
+                // requiresAuth a propósito — el mapa es de lectura pública y el
+                // interceptor "frictionless" (useAuthModal) es quien pide sesión
+                // justo al reservar, sin expulsar al usuario a /login de entrada.
+                path: 'checkout/:id',
+                name: 'EventoCheckout',
+                component: EventoCheckout
+            },
+            {
+                path: 'confirmacion/:ordenId',
+                name: 'ConfirmacionCompra',
+                component: ConfirmacionCompra,
+                meta: { requiresAuth: true }
+            },
+            {
+                path: 'ficha-oxxo/:ordenId',
+                name: 'FichaOxxo',
+                component: FichaOxxo,
+                meta: { requiresAuth: true }
             },
             {
                 path: 'login',
@@ -73,6 +100,22 @@ const routes = [
                 name: 'Perfil',
                 component: Perfil,
                 meta: { requiresAuth: true }
+            },
+            {
+                path: 'mis-boletos',
+                name: 'MisBoletos',
+                component: MisBoletos,
+                meta: { requiresAuth: true }
+            },
+            {
+                // RN-09/RF-10: mismos roles que autoriza el backend en
+                // CompraController::comprarPos() ('vendedor', 'organizador', 'admin') —
+                // no solo 'vendedor'/'admin', para no bloquear en el frontend a un rol
+                // que el backend sí permite vender en taquilla.
+                path: 'pos',
+                name: 'POSTaquilla',
+                component: POSTaquilla,
+                meta: { requiresAuth: true, roles: ['vendedor', 'organizador', 'admin'] }
             },
             {
                 path: 'organizador',

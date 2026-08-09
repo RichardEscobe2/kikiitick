@@ -28,13 +28,16 @@ return new class extends Migration
 
     public function down(): void
     {
+        // 🛡️ RN-05: el rollback debe restaurar la constraint contra 'usuarios' (la tabla real
+        // del dominio), NO contra 'users' (tabla stock de Laravel, vacía y sin uso). Apuntar a
+        // 'users' aquí reintroduciría exactamente el bug que esta migración corrige.
         Schema::table('asientos_evento', function (Blueprint $table) {
             $table->dropForeign(['reservado_por_usuario_id']);
         });
 
         Schema::table('asientos_evento', function (Blueprint $table) {
             $table->foreign('reservado_por_usuario_id')
-                ->references('id')->on('users')
+                ->references('id')->on('usuarios')
                 ->nullOnDelete();
         });
     }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\InventarioComprometidoException;
 use App\Models\Teatro;
 use App\Models\ZonaTeatro;
 use App\Models\Asiento;
@@ -105,19 +106,6 @@ class TeatroController extends Controller
             return response()->json(['message' => 'No tienes permiso para editar este recinto.'], 403);
         }
 
-        // 🛡️ RN-01: Bloquear la regeneración de la matriz si ya existe inventario comprometido
-        $tieneInventarioComprometido = DB::table('asientos_evento')
-            ->join('asientos', 'asientos_evento.asiento_id', '=', 'asientos.id')
-            ->where('asientos.teatro_id', $teatro->id)
-            ->whereIn('asientos_evento.estado', ['reservado', 'vendido'])
-            ->exists();
-
-        if ($tieneInventarioComprometido) {
-            return response()->json([
-                'message' => 'No se puede modificar la distribución física del recinto: existen asientos reservados o vendidos en eventos asociados. Esta acción destruiría el historial de ventas.'
-            ], 409);
-        }
-
         $validated = $request->validate([
             'nombre'             => ['required', 'string', 'max:255', 'regex:/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/'],
             'ubicacion'          => 'required|string|max:255',
@@ -140,18 +128,30 @@ class TeatroController extends Controller
             ], 422);
         }
 
-        $teatro->update([
-            'nombre'             => trim($validated['nombre']),
-            'ubicacion'          => trim($validated['ubicacion']),
-            'capacidad_total'    => $capacidadMaxima,
-            'filas_totales'      => $validated['filas_totales'],
-            'asientos_por_fila'  => $validated['asientos_por_fila'],
-            'pasillos_slots'     => $validated['pasillos_slots'] ?? [],
-            'posicion_escenario' => $validated['posicion_escenario'],
-        ]);
+        try {
+            // 🛡️ RN-01: la actualización de los metadatos del recinto y la regeneración de
+            // la matriz de asientos se envuelven en una única transacción atómica. Si
+            // SeatGeneratorService detecta inventario comprometido (reservado/vendido) y
+            // lanza InventarioComprometidoException, esta transacción externa hace rollback
+            // completo — evitando dejar el recinto con metadatos (filas_totales,
+            // asientos_por_fila) actualizados pero sin una matriz de asientos consistente.
+            DB::transaction(function () use ($teatro, $validated, $capacidadMaxima) {
+                $teatro->update([
+                    'nombre'             => trim($validated['nombre']),
+                    'ubicacion'          => trim($validated['ubicacion']),
+                    'capacidad_total'    => $capacidadMaxima,
+                    'filas_totales'      => $validated['filas_totales'],
+                    'asientos_por_fila'  => $validated['asientos_por_fila'],
+                    'pasillos_slots'     => $validated['pasillos_slots'] ?? [],
+                    'posicion_escenario' => $validated['posicion_escenario'],
+                ]);
 
-        // 🔹 REGENERAR MATRIZ MAESTRA
-        SeatGeneratorService::generarAsientosParaTeatro($teatro);
+                // 🔹 REGENERAR MATRIZ MAESTRA
+                SeatGeneratorService::generarAsientosParaTeatro($teatro);
+            });
+        } catch (InventarioComprometidoException $e) {
+            return response()->json(['message' => $e->getMessage()], 409);
+        }
 
         return response()->json([
             'message' => 'Recinto y distribución física actualizados exitosamente.',

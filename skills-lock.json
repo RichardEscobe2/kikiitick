@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "skills": {
+    "laravel-architecture": {
+      "source": "fusengine/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/laravel-expert/skills/laravel-architecture/SKILL.md",
+      "computedHash": "f05d84a7c93e40d236f06da3956e169815dd7a7b14bda83b11df7e79f67b4cf3"
+    },
+    "laravel-database-optimization": {
+      "source": "asyrafhussin/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/laravel-database-optimization/SKILL.md",
+      "computedHash": "564cbba91a281420e077178d7b367ef1c367576ff6f050f9ee6eaa99d30d2a1c"
+    },
+    "laravel-development": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "laravel-development/SKILL.md",
+      "computedHash": "a2c5901b20c07a500026fde489e13f33c1a0d06eb5201bbec2853eec86b55292"
+    },
+    "laravel-owasp-security": {
+      "source": "asyrafhussin/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/laravel-owasp-security/SKILL.md",
+      "computedHash": "35f74b7fb37c9b0cb1a274e7e25f7425e793dacd73620c3507c7e9462e4c9c9d"
+    },
+    "laravel-security-audit": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/laravel-security-audit/SKILL.md",
+      "computedHash": "221f61ac5c95ab3d708f232fa51511c51eed3495f7d0e99fdc247d2823b4bf04"
+    },
+    "laravel-testing": {
+      "source": "asyrafhussin/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/laravel-testing/SKILL.md",
+      "computedHash": "9627c977341aa7a9a11e5f500838409c1e39e1ca0714c6a6038fba4d3a5203c9"
+    },
+    "tailwind-best-practices": {
+      "source": "asyrafhussin/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/tailwind-best-practices/SKILL.md",
+      "computedHash": "39145b4b9d12b154d9ff9261805d225557a1dcb5c881b1da8dcc027004aefd44"
+    },
+    "tailwindcss-development": {
+      "source": "laravel/boost",
+      "sourceType": "github",
+      "skillPath": ".ai/tailwindcss/3/skill/tailwindcss-development/SKILL.md",
+      "computedHash": "f1d29fcdfb77f72e8f25b157793c2d879e0d6a87199ea976dde60e05e3146799"
+    },
+    "vue-best-practices": {
+      "source": "hyf0/vue-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vue-best-practices/SKILL.md",
+      "computedHash": "3df585ad31aec78fe55c56c1411262737e6b231677a3153dec512a882fde80cd"
+    },
+    "vue-debug-guides": {
+      "source": "hyf0/vue-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vue-debug-guides/SKILL.md",
+      "computedHash": "fa7b31c32a6717ae47cd2ea208773e27536225ad053a564effe656bf927fe9ef"
+    }
+  }
+}

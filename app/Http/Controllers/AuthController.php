@@ -8,6 +8,7 @@ use App\Mail\CodigoVerificacionMail;
 use App\Services\SeatGeneratorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -35,11 +36,13 @@ class AuthController extends Controller
             'nombre'     => 'required|string|max:255',
             'correo'     => 'required|string|email|max:255|unique:usuarios,correo',
             'contrasena' => 'required|string|min:8',
-            'rol'        => 'nullable|in:admin,organizador,cliente',
         ]);
 
-        $rol = $validated['rol'] ?? 'cliente';
-        $estatusOrganizador = ($rol === 'organizador') ? 'pendiente' : 'ninguno';
+        // 🛡️ RN-02: el registro público nunca debe permitir auto-asignación de rol.
+        // Todo registro entra como 'cliente'; la promoción a 'organizador'/'admin'
+        // ocurre exclusivamente vía registerOrganizador() o AdminController::cambiarRol().
+        $rol = 'cliente';
+        $estatusOrganizador = 'ninguno';
 
         $codigo = (string) random_int(100000, 999999);
 
@@ -83,29 +86,37 @@ class AuthController extends Controller
 
         $codigo = (string) random_int(100000, 999999);
 
-        $usuario = User::create([
-            'nombre'              => $validated['nombre'],
-            'correo'              => strtolower(trim($validated['correo'])),
-            'contrasena'          => Hash::make($validated['contrasena']),
-            'rol'                 => 'cliente', 
-            'estatus_organizador' => 'pendiente',
-            'codigo_verificacion' => $codigo,
-            'codigo_expira_en'    => now()->addMinutes(10),
-        ]);
+        // 🛡️ Atomicidad: si Teatro::create() o la generación de asientos fallan tras
+        // crear el User, la transacción hace rollback completo — evita un usuario
+        // 'organizador' huérfano sin recinto asociado. attempts:3 reintenta ante
+        // deadlocks transitorios (la generación de asientos usa lockForUpdate internamente).
+        [$usuario, $teatro] = DB::transaction(function () use ($validated, $codigo) {
+            $usuario = User::create([
+                'nombre'              => $validated['nombre'],
+                'correo'              => strtolower(trim($validated['correo'])),
+                'contrasena'          => Hash::make($validated['contrasena']),
+                'rol'                 => 'cliente',
+                'estatus_organizador' => 'pendiente',
+                'codigo_verificacion' => $codigo,
+                'codigo_expira_en'    => now()->addMinutes(10),
+            ]);
 
-        $teatro = Teatro::create([
-            'usuario_id'         => $usuario->id,
-            'nombre'             => $validated['teatro_nombre'],
-            'ubicacion'          => $validated['teatro_ubicacion'],
-            'capacidad_total'    => $validated['teatro_capacidad'],
-            'filas_totales'      => $validated['teatro_filas_totales'] ?? 15,
-            'asientos_por_fila'  => $validated['teatro_asientos_por_fila'] ?? 20,
-            'pasillos_slots'     => $validated['teatro_pasillos_slots'] ?? [5, 15],
-            'posicion_escenario' => $validated['teatro_posicion_escenario'] ?? 'arriba',
-        ]);
+            $teatro = Teatro::create([
+                'usuario_id'         => $usuario->id,
+                'nombre'             => $validated['teatro_nombre'],
+                'ubicacion'          => $validated['teatro_ubicacion'],
+                'capacidad_total'    => $validated['teatro_capacidad'],
+                'filas_totales'      => $validated['teatro_filas_totales'] ?? 15,
+                'asientos_por_fila'  => $validated['teatro_asientos_por_fila'] ?? 20,
+                'pasillos_slots'     => $validated['teatro_pasillos_slots'] ?? [5, 15],
+                'posicion_escenario' => $validated['teatro_posicion_escenario'] ?? 'arriba',
+            ]);
 
-        // Generar matriz inicial
-        SeatGeneratorService::generarAsientosParaTeatro($teatro);
+            // Generar matriz inicial
+            SeatGeneratorService::generarAsientosParaTeatro($teatro);
+
+            return [$usuario, $teatro];
+        }, attempts: 3);
 
         $this->enviarCodigoPorCorreo($usuario, $codigo);
 
@@ -176,7 +187,7 @@ class AuthController extends Controller
 
         $usuario = User::where('correo', $request->correo)->first();
 
-        if ($usuario->codigo_verificacion !== $request->codigo) {
+        if (! hash_equals((string) $usuario->codigo_verificacion, (string) $request->codigo)) {
             return response()->json([
                 'message' => 'El código ingresado es incorrecto.'
             ], 422);
@@ -256,7 +267,7 @@ class AuthController extends Controller
 
         $usuario = User::where('correo', $request->correo)->first();
 
-        if ($usuario->codigo_verificacion !== $request->codigo) {
+        if (! hash_equals((string) $usuario->codigo_verificacion, (string) $request->codigo)) {
             return response()->json([
                 'message' => 'El código de verificación es incorrecto.'
             ], 422);

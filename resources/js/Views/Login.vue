@@ -88,7 +88,8 @@ const handleLogin = async () => {
     const response = await axios.post('/api/login', form.value);
     const data = response.data;
 
-    localStorage.setItem('usuario_kikiitick', JSON.stringify(data.user));
+    // Estado de sesión manejado vía cookie httpOnly + GET /api/user (useAuth.fetchUser);
+    // no se persiste el usuario en localStorage.
 
     if (typeof fetchUser === 'function') {
       await fetchUser();
@@ -99,15 +100,18 @@ const handleLogin = async () => {
       router.push({ name: 'AdminUsuarios' });
     } else if (rol === 'organizador') {
       router.push({ name: 'Organizador' });
+    } else if (rol === 'vendedor') {
+      router.push({ name: 'POSTaquilla' });
     } else {
       router.push({ name: 'Home' });
     }
   } catch (e) {
     const data = e.response?.data;
-    if (data?.requiere_verificacion) {
-      router.push({ name: 'VerificarCodigo', query: { correo: data.correo } });
-    } else if (data) {
-      errorMsg.value = data.error || 'Credenciales inválidas.';
+    // El backend siempre responde con la clave 'message' (nunca 'error') — con
+    // data.error el texto real de AuthController::login() (401 credenciales
+    // incorrectas vs. 403 cuenta no verificada) nunca llegaba a mostrarse.
+    if (data) {
+      errorMsg.value = data.message || 'Credenciales inválidas.';
     } else {
       errorMsg.value = 'Ocurrió un error de conexión.';
     }

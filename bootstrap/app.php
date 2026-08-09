@@ -15,9 +15,20 @@ return Application::configure(basePath: dirname(__DIR__))
         // 🔒 Permite que Sanctum reconozca las cookies de sesión en las rutas de la API
         $middleware->statefulApi();
 
-        // 🛡️ Alias para el middleware de verificación de rol administrativo (RN-02)
+        // 🛡️ Cabeceras de seguridad HTTP (OWASP A05) en todas las respuestas
+        $middleware->append(\App\Http\Middleware\SecureHeaders::class);
+
+        // 💳 Webhook de Mercado Pago: petición externa servidor-a-servidor, no puede
+        // llevar token CSRF de sesión. Autenticidad verificada en su lugar mediante la
+        // firma HMAC del header x-signature (WebhookSignatureValidator del SDK).
+        $middleware->preventRequestForgery(except: [
+            'api/pagos/webhook',
+        ]);
+
+        // 🛡️ Alias para los middlewares de verificación de rol (RN-02)
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
+            'organizador' => \App\Http\Middleware\EnsureUserIsOrganizador::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

@@ -24,6 +24,14 @@ class CompraService
     private const MINUTOS_RESERVA = 5;
 
     /**
+     * Ventana de gracia para pagos en efectivo (OXXO/SPEI): a diferencia de tarjeta
+     * (confirmación síncrona en el redirect de Mercado Pago), el pago en efectivo puede
+     * tardar horas/días en pagarse en tienda — los asientos deben permanecer apartados
+     * mientras tanto, no liberarse a los 5 minutos del bloqueo inicial de RN-05.
+     */
+    private const HORAS_RESERVA_EFECTIVO = 24;
+
+    /**
      * Bloquea temporalmente los asientos seleccionados para el usuario.
      *
      * @throws CompraException
@@ -67,21 +75,26 @@ class CompraService
 
             // 3. Bloquear asientos por el periodo estricto de reserva
             $expiraEn = Carbon::now()->addMinutes(self::MINUTOS_RESERVA);
+            $now = Carbon::now();
 
-            foreach ($asientoIds as $asientoId) {
-                AsientoEvento::updateOrCreate(
-                    [
-                        'evento_id'  => $eventoId,
-                        'asiento_id' => $asientoId,
-                    ],
-                    [
-                        'estado'                   => 'reservado',
-                        'reservado_por_usuario_id' => $usuario->id,
-                        'reservado_hasta'          => $expiraEn,
-                    ]
-                );
-            }
-        });
+            // ⚡ Bulk upsert en vez de updateOrCreate() por asiento: reduce cuánto tiempo
+            // se mantienen abiertos los locks de esta transacción con carritos grandes.
+            $filasParaReservar = array_map(fn ($asientoId) => [
+                'evento_id'                => $eventoId,
+                'asiento_id'                => $asientoId,
+                'estado'                   => 'reservado',
+                'reservado_por_usuario_id' => $usuario->id,
+                'reservado_hasta'          => $expiraEn,
+                'created_at'               => $now,
+                'updated_at'               => $now,
+            ], $asientoIds);
+
+            AsientoEvento::upsert(
+                $filasParaReservar,
+                ['evento_id', 'asiento_id'],
+                ['estado', 'reservado_por_usuario_id', 'reservado_hasta', 'updated_at']
+            );
+        }, attempts: 3);
 
         return [
             'message'           => 'Asientos reservados temporalmente por ' . self::MINUTOS_RESERVA . ' minutos.',
@@ -96,9 +109,9 @@ class CompraService
      *
      * @throws CompraException
      */
-    public function procesarCompra(User $usuario, int $eventoId, array $asientoIds): Venta
+    public function procesarCompra(User $usuario, int $eventoId, array $asientoIds, string $metodoPago = 'tarjeta'): Venta
     {
-        return DB::transaction(function () use ($usuario, $eventoId, $asientoIds) {
+        return DB::transaction(function () use ($usuario, $eventoId, $asientoIds, $metodoPago) {
             $evento = Evento::findOrFail($eventoId);
 
             if ($evento->estatus !== 'activo') {
@@ -134,17 +147,42 @@ class CompraService
                 'total_comisiones' => $totalComisiones,
                 'monto_total'      => $montoTotal,
                 'estatus_pago'     => 'pendiente',
+                'metodo_pago'      => $metodoPago,
                 'fecha_venta'      => Carbon::now(),
             ]);
 
-            foreach ($detallesParaCrear as $detalle) {
-                DetalleVenta::create([
-                    'venta_id'         => $nuevaVenta->id,
-                    'boleto_evento_id' => $detalle['boleto_evento_id'],
-                    'cantidad'         => $detalle['cantidad'],
-                    'subtotal'         => $detalle['subtotal'],
-                ]);
+            // 🔗 Enlaza estos asientos con la Venta que los está comprando, para que la
+            // confirmación de pago (webhook) pueda ubicar exactamente qué filas de
+            // asientos_evento marcar 'vendido' sin reconstruirlas a partir de datos
+            // denormalizados de Acceso.
+            $actualizacionAsientos = ['venta_id' => $nuevaVenta->id];
+
+            // 🛡️ Pago en efectivo (OXXO/SPEI): el bloqueo pesimista de 5 minutos de
+            // reservarAsientos() (RN-05) alcanza para tarjeta (confirmación síncrona en
+            // el redirect de Mercado Pago), pero NO para efectivo, cuyo pago real puede
+            // tardar horas en tienda — sin esta extensión los asientos se liberarían
+            // solos mucho antes de que el usuario llegue a pagar la ficha.
+            if ($metodoPago === 'oxxo') {
+                $actualizacionAsientos['reservado_hasta'] = Carbon::now()->addHours(self::HORAS_RESERVA_EFECTIVO);
             }
+
+            AsientoEvento::where('evento_id', $eventoId)
+                ->whereIn('asiento_id', $asientoIds)
+                ->update($actualizacionAsientos);
+
+            // ⚡ Bulk insert en vez de create() por detalle: reduce cuánto tiempo se
+            // mantienen abiertos los locks de esta transacción (RN-08, lockForUpdate arriba).
+            $now = Carbon::now();
+            $filasDetalles = array_map(fn ($detalle) => [
+                'venta_id'         => $nuevaVenta->id,
+                'boleto_evento_id' => $detalle['boleto_evento_id'],
+                'cantidad'         => $detalle['cantidad'],
+                'subtotal'         => $detalle['subtotal'],
+                'created_at'       => $now,
+                'updated_at'       => $now,
+            ], $detallesParaCrear);
+
+            DetalleVenta::insert($filasDetalles);
 
             $this->emitirAccesos($nuevaVenta, $eventoId, $usuario, $asientosPorZona, $boletosPorZona);
 
@@ -154,7 +192,133 @@ class CompraService
             // vigente como red de seguridad si el pago nunca se completa.
 
             return $nuevaVenta;
-        });
+        }, attempts: 3);
+    }
+
+    /**
+     * Confirma una Venta cuyo pago fue aprobado por Mercado Pago (llamado desde el
+     * webhook, después de re-verificar el estado del pago contra la API de Mercado Pago
+     * — nunca a partir del cuerpo de la notificación sin verificar).
+     *
+     * Idempotente: si la Venta ya estaba 'pagado' (notificación duplicada/reintento de
+     * Mercado Pago), no hace nada y devuelve false para que el llamador no reenvíe el
+     * correo de confirmación una segunda vez.
+     *
+     * @return bool true si esta llamada fue la que efectivamente confirmó el pago.
+     */
+    public function confirmarPagoAprobado(Venta $venta): bool
+    {
+        return DB::transaction(function () use ($venta) {
+            // lockForUpdate: si Mercado Pago reintenta la misma notificación en paralelo,
+            // solo una petición debe ganar la transición pendiente -> pagado.
+            $ventaBloqueada = Venta::where('id', $venta->id)->lockForUpdate()->first();
+
+            if (!$ventaBloqueada || $ventaBloqueada->estatus_pago === 'pagado') {
+                return false;
+            }
+
+            // 🛡️ RN-01/RN-05: 'vendido' es un estado terminal — reservado_hasta se limpia
+            // a null para que ningún cleanup de reservas expiradas (que solo mira
+            // estado='reservado') pueda tocar jamás estos asientos.
+            AsientoEvento::where('venta_id', $ventaBloqueada->id)
+                ->update(['estado' => 'vendido', 'reservado_hasta' => null]);
+
+            // metodo_pago ya quedó fijado en procesarCompra() ('tarjeta'/'oxxo', la
+            // intención real del comprador) — no se sobreescribe aquí para no perder esa
+            // distinción de cara a "Mis Boletos"/reportes.
+            $ventaBloqueada->update([
+                'estatus_pago' => 'pagado',
+            ]);
+
+            return true;
+        }, attempts: 3);
+    }
+
+    /**
+     * Venta directa en taquilla (RF-10/RN-09): el personal autorizado (vendedor,
+     * organizador o admin) cobra en efectivo/tarjeta física y la venta queda
+     * inmediatamente 'pagado', sin pasar por la pasarela de pago en línea.
+     *
+     * @throws CompraException
+     */
+    public function comprarEnTaquilla(User $vendedor, int $eventoId, array $asientoIds, string $metodoPago): Venta
+    {
+        return DB::transaction(function () use ($vendedor, $eventoId, $asientoIds, $metodoPago) {
+            $evento = Evento::find($eventoId);
+
+            if (!$evento || $evento->estatus !== 'activo') {
+                throw new CompraException('Este evento no está disponible para venta en taquilla.');
+            }
+
+            // Libera reservas online expiradas antes de validar disponibilidad, igual
+            // que en reservarAsientos().
+            AsientoEvento::where('evento_id', $eventoId)
+                ->where('estado', 'reservado')
+                ->where('reservado_hasta', '<', Carbon::now())
+                ->update(['estado' => 'disponible', 'reservado_por_usuario_id' => null, 'reservado_hasta' => null]);
+
+            $ocupados = AsientoEvento::where('evento_id', $eventoId)
+                ->whereIn('asiento_id', $asientoIds)
+                ->whereIn('estado', ['vendido', 'reservado'])
+                ->lockForUpdate()
+                ->exists();
+
+            if ($ocupados) {
+                throw new CompraException('Uno o más asientos seleccionados ya están ocupados o reservados.');
+            }
+
+            [$montoNetoTotal, $detallesParaCrear, $boletosPorZona, $asientosPorZona] =
+                $this->calcularDetalleCompra($eventoId, $asientoIds);
+
+            $comisionPorBoleto = (float) $evento->comision_fija_empresa;
+            $totalComisiones = count($asientoIds) * $comisionPorBoleto;
+            $montoTotal = $montoNetoTotal + $totalComisiones;
+
+            $nuevaVenta = Venta::create([
+                'usuario_id'             => $vendedor->id,
+                'vendido_por_usuario_id' => $vendedor->id,
+                'monto_neto'             => $montoNetoTotal,
+                'total_comisiones'       => $totalComisiones,
+                'monto_total'            => $montoTotal,
+                'estatus_pago'           => 'pagado',
+                'metodo_pago'            => $metodoPago,
+                'fecha_venta'            => Carbon::now(),
+            ]);
+
+            $now = Carbon::now();
+            $filasDetalles = array_map(fn ($detalle) => [
+                'venta_id'         => $nuevaVenta->id,
+                'boleto_evento_id' => $detalle['boleto_evento_id'],
+                'cantidad'         => $detalle['cantidad'],
+                'subtotal'         => $detalle['subtotal'],
+                'created_at'       => $now,
+                'updated_at'       => $now,
+            ], $detallesParaCrear);
+            DetalleVenta::insert($filasDetalles);
+
+            $this->emitirAccesos($nuevaVenta, $eventoId, $vendedor, $asientosPorZona, $boletosPorZona);
+
+            // Venta de taquilla es inmediata: marca 'vendido' directamente (sin pasar por
+            // el estado intermedio 'reservado' del flujo de checkout en línea).
+            $filasVendidas = array_map(fn ($asientoId) => [
+                'evento_id'                => $eventoId,
+                'asiento_id'                => $asientoId,
+                'estado'                   => 'vendido',
+                'reservado_por_usuario_id' => $vendedor->id,
+                'reservado_hasta'          => null,
+                'venta_id'                 => $nuevaVenta->id,
+                'created_at'               => $now,
+                'updated_at'               => $now,
+            ], $asientoIds);
+
+            AsientoEvento::upsert(
+                $filasVendidas,
+                ['evento_id', 'asiento_id'],
+                ['estado', 'reservado_por_usuario_id', 'reservado_hasta', 'venta_id', 'updated_at']
+            );
+
+            return $nuevaVenta;
+        }, attempts: 3);
     }
 
     /**

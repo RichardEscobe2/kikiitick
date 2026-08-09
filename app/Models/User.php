@@ -31,6 +31,8 @@ class User extends Authenticatable
         'codigo_verificacion',
         'codigo_expira_en',
         'correo_verificado_at',
+        'organizador_padre_id',
+        'taquilla_id',
     ];
 
     /**
@@ -72,5 +74,30 @@ class User extends Authenticatable
     public function teatros()
     {
         return $this->hasMany(Teatro::class, 'usuario_id');
+    }
+
+    /**
+     * Organizador que emplea a esta cuenta de cajero/vendedor (null si no aplica,
+     * ej. clientes, admins, o el propio organizador).
+     */
+    public function organizadorPadre()
+    {
+        return $this->belongsTo(User::class, 'organizador_padre_id');
+    }
+
+    /**
+     * Cuentas de cajero/vendedor que este organizador tiene a su cargo.
+     */
+    public function cajeros()
+    {
+        return $this->hasMany(User::class, 'organizador_padre_id');
+    }
+
+    /**
+     * Taquilla física a la que está asignada esta cuenta de cajero/vendedor.
+     */
+    public function taquilla()
+    {
+        return $this->belongsTo(Taquilla::class, 'taquilla_id');
     }
 }
