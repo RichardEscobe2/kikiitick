@@ -38,11 +38,31 @@ Route::prefix('api')->group(function () {
     Route::middleware('throttle:60,1')->group(function () {
         
         // Obtener eventos activos
+        // 🎨 precio_desde (MIN de boletos_evento.precio_base) y teatro_ubicacion se
+        // agregaron para el rediseño de Home.vue (mockup): "DESDE $X" en cada tarjeta
+        // y el filtro de "Ubicación" del buscador. LEFT JOIN porque un evento sin
+        // tarifas configuradas aún (organizador no las ha guardado) debe seguir
+        // apareciendo en el listado, solo con precio_desde en null — el frontend
+        // decide cómo mostrarlo, no se oculta el evento por falta de precio.
         Route::get('/eventos', function () {
             return DB::table('eventos')
                 ->join('teatros', 'eventos.teatro_id', '=', 'teatros.id')
-                ->select('eventos.*', 'teatros.nombre as teatro_nombre')
+                ->select(
+                    'eventos.*',
+                    'teatros.nombre as teatro_nombre',
+                    'teatros.ubicacion as teatro_ubicacion'
+                )
+                // 🐛 Un LEFT JOIN + GROUP BY inicial fallaba en MySQL real bajo
+                // ONLY_FULL_GROUP_BY (1055: eventos.teatro_id no está en GROUP BY) —
+                // una subconsulta correlacionada evita el GROUP BY por completo y es
+                // más simple de leer.
+                ->selectSub(function ($query) {
+                    $query->from('boletos_evento')
+                        ->selectRaw('MIN(precio_base)')
+                        ->whereColumn('boletos_evento.evento_id', 'eventos.id');
+                }, 'precio_desde')
                 ->where('eventos.estatus', 'activo')
+                ->orderBy('eventos.fecha_hora')
                 ->get();
         });
 
