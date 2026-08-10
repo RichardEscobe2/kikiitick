@@ -18,6 +18,10 @@
         .totales .valor { text-align: right; }
         .total-final td { font-weight: bold; font-size: 16px; border-top: 2px solid #4f46e5; padding-top: 12px; }
         .nota { font-size: 12px; color: #6b7280; margin-top: 20px; }
+        .boleto-detalle { font-size: 13px; }
+        .boleto-detalle strong { display: block; margin-bottom: 2px; }
+        .boleto-detalle span { color: #6b7280; font-size: 12px; }
+        .qr-cell { text-align: right; vertical-align: middle; width: 100px; }
         .cta-wrap { text-align: center; margin: 24px 0 4px; }
         .cta-btn { display: inline-block; background: #4f46e5; color: #ffffff !important; text-decoration: none; font-weight: bold; font-size: 14px; padding: 12px 28px; border-radius: 8px; }
         .footer { text-align: center; font-size: 11px; color: #9ca3af; margin-top: 24px; }
@@ -41,17 +45,26 @@
         <table>
             <thead>
                 <tr>
-                    <th>Folio Boleto</th>
-                    <th>Zona</th>
-                    <th>Asiento</th>
+                    <th>Boleto</th>
+                    <th class="qr-cell">Código de acceso</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach($accesos as $acceso)
+                @foreach($accesosConQr as $item)
                     <tr>
-                        <td>{{ $acceso->numero_control }}</td>
-                        <td>{{ $acceso->seccion_pasillo }}</td>
-                        <td>Fila {{ $acceso->fila_palco }} · #{{ $acceso->numero_asiento }}</td>
+                        <td class="boleto-detalle">
+                            <strong>{{ $item['acceso']->numero_control }}</strong>
+                            <span>{{ $item['acceso']->seccion_pasillo }} · Fila {{ $item['acceso']->fila_palco }} · #{{ $item['acceso']->numero_asiento }}</span>
+                        </td>
+                        <td class="qr-cell">
+                            <img
+                                src="{{ $item['qr_data_uri'] }}"
+                                width="90"
+                                height="90"
+                                alt="Código QR de acceso — boleto {{ $item['acceso']->numero_control }}"
+                                style="display:inline-block; border-radius:4px;"
+                            />
+                        </td>
                     </tr>
                 @endforeach
             </tbody>
@@ -94,13 +107,15 @@
 
         @if($venta->vendido_por_usuario_id)
             <p class="nota">
-                Conserva este correo como tu comprobante de compra: presenta el folio de cada
-                boleto (arriba en esta tabla) al ingresar al evento.
+                Conserva este correo como tu comprobante de compra: presenta el código QR de
+                cada boleto (arriba en esta tabla) al ingresar al evento — también sirve como
+                respaldo digital de tu recibo impreso en taquilla.
             </p>
         @else
             <p class="nota">
-                Puedes descargar e imprimir tus boletos digitales con código QR haciendo clic
-                en el botón de arriba, o consultarlos en cualquier momento desde tu perfil de KikiiTick.
+                El código QR de cada boleto ya está en este correo (arriba en la tabla) — puedes
+                presentarlo directo desde tu bandeja de entrada, o descargar/imprimir tus boletos
+                digitales haciendo clic en el botón de arriba en cualquier momento desde tu perfil de KikiiTick.
             </p>
         @endif
     </div>
