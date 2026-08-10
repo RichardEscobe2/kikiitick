@@ -99,7 +99,7 @@
         --}}
         @unless($venta->vendido_por_usuario_id)
             <div class="cta-wrap">
-                <a class="cta-btn" href="{{ rtrim((string) config('app.frontend_url'), '/') }}/confirmacion/{{ $venta->id }}">
+                <a class="cta-btn" href="{{ $confirmacionUrl }}">
                     Ver / Descargar Boletos Digitales (QR)
                 </a>
             </div>
