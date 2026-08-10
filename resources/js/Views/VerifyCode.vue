@@ -1,49 +1,34 @@
 <template>
   <div class="min-h-[75vh] flex items-center justify-center py-10 px-4">
-    <div class="max-w-md w-full bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center">
-      
-      <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
-        📩
+    <VerificationCard
+      v-model:code="codigo"
+      title="Verifica tu cuenta"
+      subtitle="Hemos enviado un código de 6 dígitos a"
+      :email="correo"
+      button-text="Validar y Crear Cuenta"
+      icon-type="mail"
+      action-type="verify_account"
+      :loading="cargando"
+      :error-msg="errorMsg"
+      :disable-submit="codigo.length !== 6"
+      @submit="verificarCodigo"
+      @resend="reenviarCodigo"
+    >
+      <!-- Estado de éxito: reemplaza el alert() nativo por un panel en línea,
+           consistente con el patrón que ya usa ResetPasswordView.vue. -->
+      <div v-if="exito" class="mt-5 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl text-center space-y-1">
+        <p class="font-bold text-sm">🎉 ¡Cuenta activada con éxito!</p>
+        <p class="text-emerald-600">Redirigiendo al inicio de sesión...</p>
       </div>
-
-      <h2 class="text-2xl font-bold text-gray-900">Verifica tu correo</h2>
-      <p class="text-xs text-gray-500 mt-2">
-        Hemos enviado un código de 6 dígitos a:<br>
-        <strong class="text-gray-800">{{ correo }}</strong>
-      </p>
-
-      <div v-if="errorMsg" class="my-3 p-2 bg-red-50 text-red-600 text-xs rounded-lg">
-        {{ errorMsg }}
-      </div>
-
-      <form @submit.prevent="verificarCodigo" class="mt-6 space-y-4">
-        <div>
-          <input 
-            v-model="codigo"
-            type="text" 
-            maxlength="6"
-            placeholder="000000"
-            required
-            class="w-full py-3 text-center text-2xl tracking-[0.5em] font-mono font-bold bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-          />
-        </div>
-
-        <button 
-          type="submit" 
-          :disabled="codigo.length !== 6 || cargando"
-          class="w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 disabled:opacity-50 transition-all"
-        >
-          {{ cargando ? 'Verificando...' : 'Confirmar Código' }}
-        </button>
-      </form>
-    </div>
+    </VerificationCard>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { axios } from '../composables/useAuth';
+import VerificationCard from '../Components/VerificationCard.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -52,23 +37,43 @@ const correo = ref('');
 const codigo = ref('');
 const cargando = ref(false);
 const errorMsg = ref('');
+const exito = ref(false);
+let redirectTimer = null;
 
 onMounted(() => {
   correo.value = route.query.correo || '';
 });
 
 const verificarCodigo = async () => {
+  if (codigo.value.length !== 6) return;
+
   cargando.value = true;
   errorMsg.value = '';
 
   try {
     await axios.post('/api/verificar-codigo', { correo: correo.value, codigo: codigo.value });
-    alert('¡Cuenta activada con éxito! Ahora puedes iniciar sesión.');
-    router.push('/login');
+    exito.value = true;
+    redirectTimer = setTimeout(() => router.push('/login'), 1800);
   } catch (e) {
-    errorMsg.value = e.response?.data?.error || 'Código inválido.';
+    // 🐛 El backend siempre responde con la clave 'message' (nunca 'error') —
+    // con e.response?.data?.error el texto real (código incorrecto vs.
+    // expirado) nunca llegaba a mostrarse, siempre caía al genérico.
+    errorMsg.value = e.response?.data?.message || 'Código inválido.';
   } finally {
     cargando.value = false;
   }
 };
+
+const reenviarCodigo = async () => {
+  errorMsg.value = '';
+  try {
+    await axios.post('/api/enviar-codigo', { correo: correo.value });
+  } catch (e) {
+    errorMsg.value = e.response?.data?.message || 'No se pudo reenviar el código.';
+  }
+};
+
+onUnmounted(() => {
+  if (redirectTimer) clearTimeout(redirectTimer);
+});
 </script>
