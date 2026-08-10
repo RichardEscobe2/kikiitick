@@ -7,6 +7,7 @@ use MercadoPago\Client\Payment\PaymentClient;
 use MercadoPago\Client\Preference\PreferenceClient;
 use MercadoPago\Exceptions\MPApiException;
 use MercadoPago\MercadoPagoConfig;
+use MercadoPago\Net\MPSearchRequest;
 use MercadoPago\Resources\Payment;
 
 /**
@@ -145,5 +146,35 @@ class MercadoPagoService
     public function obtenerPago(int $paymentId): Payment
     {
         return (new PaymentClient())->get($paymentId);
+    }
+
+    /**
+     * Busca en la API de Mercado Pago si existe un pago aprobado para esta Venta,
+     * sin depender de un payment_id conocido de antemano (a diferencia de
+     * obtenerPago()). Usado por el comando de reconciliación programada
+     * (kikiitick:reconciliar-pagos-pendientes) como red de seguridad cuando ni el
+     * webhook ni el retorno del usuario a ConfirmacionCompra.vue llegaron a
+     * confirmar el pago.
+     *
+     * @throws MPApiException
+     */
+    public function buscarPagoAprobado(Venta $venta): ?Payment
+    {
+        $resultado = (new PaymentClient())->search(new MPSearchRequest(10, 0, [
+            'external_reference' => (string) $venta->id,
+            'sort'               => 'date_created',
+            'criteria'           => 'desc',
+        ]));
+
+        foreach ($resultado->results as $pago) {
+            // 🛡️ Mismo chequeo BOLA que reconciliarPagoPendiente(): el filtro de
+            // búsqueda ya restringe por external_reference, pero se re-verifica aquí
+            // por si la API alguna vez devolviera resultados de otra referencia.
+            if ($pago->status === 'approved' && (string) $pago->external_reference === (string) $venta->id) {
+                return $pago;
+            }
+        }
+
+        return null;
     }
 }

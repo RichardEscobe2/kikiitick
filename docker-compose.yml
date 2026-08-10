@@ -106,6 +106,28 @@ services:
     # vuelve a levantar — mecanismo simple de auto-recuperación sin necesitar un
     # healthcheck dedicado.
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kikiitick-scheduler
+    restart: unless-stopped
+    # schedule:work ya hace el "tick" cada minuto internamente — no necesita cron
+    # del sistema operativo. Corre kikiitick:reconciliar-pagos-pendientes (ver
+    # routes/console.php) cada 10 minutos como red de seguridad del Módulo 5.
+    command: ["php", "artisan", "schedule:work"]
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    volumes:
+      - app-storage-logs:/var/www/html/storage/logs
+    networks:
+      - kikiitick-net
+
   web:
     image: nginx:1.27-alpine
     container_name: kikiitick-web
