@@ -2,8 +2,8 @@
   <header class="bg-white border-b border-gray-100 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-      <!-- ============ DESKTOP (sm+) ============ -->
-      <div class="hidden sm:flex items-center justify-between h-16">
+      <!-- ============ DESKTOP (md+) ============ -->
+      <div class="hidden md:flex items-center justify-between h-16">
         <div class="flex items-center gap-8">
           <router-link to="/" class="text-xl font-extrabold text-indigo-600 shrink-0">KikiiTick</router-link>
 
@@ -112,31 +112,69 @@
         </div>
       </div>
 
-      <!-- ============ MOBILE (<sm): header simplificado ============ -->
-      <div class="flex sm:hidden items-center justify-between h-14">
-        <router-link :to="isAuthenticated ? '/mis-boletos' : '/login'" class="p-2 -ml-2 text-gray-700" title="Mis boletos">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h2m6-14h2a2 2 0 012 2v3a2 2 0 100 4v3a2 2 0 01-2 2h-2M9 5v14" />
-          </svg>
-        </router-link>
-
-        <router-link to="/" class="text-lg font-extrabold text-indigo-600">KikiiTick</router-link>
-
-        <div class="relative">
-          <button @click="mostrarAvisoNotificaciones = !mostrarAvisoNotificaciones" class="p-2 -mr-2 text-gray-700 cursor-pointer" title="Notificaciones">
+      <!-- ============ MOBILE (<md): header simplificado ============ -->
+      <!-- md:hidden es lo que evita que este bloque se apile encima del
+           desktop (bug real detectado: se había perdido al reescribir este
+           div a grid en la iteración anterior — sin esta clase, ambos
+           bloques se mostraban a la vez desde 640px en adelante).
+           Grid de 3 columnas (no flex justify-between) para que el logo quede
+           realmente centrado aunque la columna derecha esté vacía — ver
+           tailwind-best-practices sobre alineación de íconos: un flex con solo
+           2 elementos habría empujado el logo hacia la derecha en vez de
+           centrarlo. -->
+      <div class="md:hidden grid grid-cols-3 items-center h-14">
+        <div class="relative justify-self-start">
+          <!-- Hamburguesa: abre un dropdown con los enlaces que en desktop
+               viven en la barra de navegación (Organizar/Nosotros) — el
+               header móvil no tiene espacio para mostrarlos todos sueltos. -->
+          <button
+            type="button"
+            @click="menuMovilAbierto = !menuMovilAbierto"
+            class="p-2 -ml-2 text-gray-700 cursor-pointer"
+            title="Menú"
+          >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <!-- 🛡️ Sin backend de notificaciones — feedback honesto en vez de un
-               dropdown con contenido inventado. -->
+
           <div
-            v-if="mostrarAvisoNotificaciones"
-            class="absolute right-0 mt-2 w-52 bg-white text-gray-600 text-xs rounded-xl shadow-xl border border-gray-100 p-3 z-50"
+            v-if="menuMovilAbierto"
+            class="absolute left-0 mt-2 w-48 bg-white text-gray-800 rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden py-2"
           >
-            Aún no tienes notificaciones nuevas.
+            <router-link
+              :to="enlaceOrganizar"
+              @click="menuMovilAbierto = false"
+              class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition"
+            >
+              Organizar
+            </router-link>
+            <a
+              href="#footer"
+              @click="menuMovilAbierto = false"
+              class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition"
+            >
+              Nosotros
+            </a>
           </div>
         </div>
+
+        <router-link to="/" class="justify-self-center text-lg font-extrabold text-indigo-600">KikiiTick</router-link>
+
+        <!-- Con sesión: acceso directo a Perfil. Sin sesión: navega a la
+             vista completa de Login (no abre el modal) — regla explícita de
+             la iteración anterior: en mobile, cualquier acción de login lleva
+             a /login, el modal queda reservado para flujos de perfil. -->
+        <router-link v-if="isAuthenticated" to="/perfil" class="justify-self-end inline-flex p-2 -mr-2 text-gray-700" title="Mi perfil">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </router-link>
+        <router-link v-else to="/login" class="justify-self-end inline-flex p-2 -mr-2 text-gray-700" title="Iniciar sesión">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </router-link>
       </div>
 
     </div>
@@ -149,7 +187,7 @@ import { useAuth } from '../composables/useAuth';
 
 const { user, isAuthenticated, userRole, isVendedor, logout } = useAuth();
 const menuAbierto = ref(false);
-const mostrarAvisoNotificaciones = ref(false);
+const menuMovilAbierto = ref(false);
 
 const inicialUsuario = computed(() => (user.value?.nombre || 'U').trim().charAt(0).toUpperCase());
 

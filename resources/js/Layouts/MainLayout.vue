@@ -5,8 +5,12 @@
 
     <!-- Área principal donde se renderizan las vistas. pb-16 en mobile deja
          espacio para que BottomTabBar (fija, position: fixed) no tape el final
-         del contenido/footer — sm:pb-0 porque en desktop esa barra no existe. -->
-    <main class="flex-1 flex flex-col" :class="mostrarTabBarInferior ? 'pb-16 sm:pb-0' : ''">
+         del contenido/footer — md:pb-0 porque en desktop esa barra no existe.
+         Debe coincidir exactamente con el breakpoint md:hidden de
+         BottomTabBar.vue: si difirieran, habría una franja de ancho entre
+         640-768px donde la barra ya no se ve pero el padding compensatorio
+         seguiría reservando el espacio (o viceversa). -->
+    <main class="flex-1 flex flex-col" :class="mostrarTabBarInferior ? 'pb-16 md:pb-0' : ''">
       <router-view />
     </main>
 
