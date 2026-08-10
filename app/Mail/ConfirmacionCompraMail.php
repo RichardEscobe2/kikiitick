@@ -48,10 +48,11 @@ class ConfirmacionCompraMail extends Mailable
         return new Content(
             view: 'emails.confirmacion_compra',
             with: [
-                'venta'          => $this->venta,
-                'accesosConQr'   => $accesosConQr,
-                'evento'         => $evento,
-                'teatro'         => $evento?->teatro,
+                'venta'           => $this->venta,
+                'accesosConQr'    => $accesosConQr,
+                'evento'          => $evento,
+                'teatro'          => $evento?->teatro,
+                'confirmacionUrl' => $this->urlConfirmacion(),
             ],
         );
     }
@@ -73,5 +74,29 @@ class ConfirmacionCompraMail extends Mailable
         );
 
         return (new PngWriter())->write($qrCode)->getDataUri();
+    }
+
+    /**
+     * 🐛 Encontrado en esta iteración: FRONTEND_URL en .env vivía sin esquema
+     * ("dominio.com" en vez de "https://dominio.com"). El Blade anterior hacía
+     * config('app.frontend_url') + concatenación directa, produciendo un
+     * <a href="dominio.com/confirmacion/1"> — SIN esquema, un navegador lo
+     * trata como URL relativa al origen actual (por eso se rompía dentro del
+     * iframe de Mailpit). Se corrigió el valor real en .env, pero esta guarda
+     * queda aquí para que una futura mala configuración degrade a un enlace
+     * absoluto igual, en vez de repetir el mismo bug silenciosamente. Misma
+     * variable de entorno, mismo riesgo, corregido también en
+     * MercadoPagoService::crearPreferencia() (back_urls reales hacia Mercado
+     * Pago tenían exactamente este mismo problema).
+     */
+    private function urlConfirmacion(): string
+    {
+        $frontendUrl = trim((string) config('app.frontend_url'));
+
+        if ($frontendUrl !== '' && !preg_match('#^https?://#i', $frontendUrl)) {
+            $frontendUrl = 'https://' . $frontendUrl;
+        }
+
+        return rtrim($frontendUrl, '/') . '/confirmacion/' . $this->venta->id;
     }
 }

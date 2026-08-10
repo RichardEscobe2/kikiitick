@@ -51,7 +51,18 @@ class MercadoPagoService
             ];
         }
 
-        $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
+        // 🐛 Encontrado junto con el mismo bug en ConfirmacionCompraMail::urlConfirmacion():
+        // FRONTEND_URL en .env vivía sin esquema ("dominio.com" en vez de
+        // "https://dominio.com"). Sin esta guarda, back_urls.success/pending/failure
+        // se enviaban a Mercado Pago SIN esquema — su API las trata como URL inválida
+        // (o, en el mejor caso, ambiguo), rompiendo el redirect real de pago, no solo
+        // el enlace del correo. El valor real de .env ya se corrigió, esta
+        // normalización queda como defensa ante una futura mala configuración.
+        $frontendUrl = trim((string) config('app.frontend_url'));
+        if ($frontendUrl !== '' && !preg_match('#^https?://#i', $frontendUrl)) {
+            $frontendUrl = 'https://' . $frontendUrl;
+        }
+        $frontendUrl = rtrim($frontendUrl, '/');
 
         // 🛡️ Las 3 back_urls apuntan a la misma ConfirmacionCompra.vue: el estado real
         // del pago (pendiente/pagado/fallido) se re-consulta ahí contra NUESTRO backend
