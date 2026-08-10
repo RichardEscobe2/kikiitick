@@ -53,23 +53,31 @@ WORKDIR /var/www/html
 #                   descompresor en PHP puro más lento, pero funciona
 #   - bcmath     -> no se usa hoy en app/ (grep sin resultados) — se incluye de
 #                   forma defensiva por ser una app que maneja montos monetarios,
-#                   costo casi nulo. gd/intl NO se incluyen: sin evidencia de uso
-#                   (grep confirma que los QR/códigos de barra se generan 100%
-#                   client-side en Vue con las librerías qrcode/jsbarcode, nunca
-#                   en PHP — ver ConfirmacionCompra.vue/FichaOxxo.vue)
+#                   costo casi nulo. intl NO se incluye: sin evidencia de uso.
+#   - gd         -> 🆕 agregada en esta iteración, NO en la auditoría original:
+#                   ConfirmacionCompraMail::generarQrDataUri() ahora genera el QR
+#                   de cada boleto server-side (endroid/qr-code, PngWriter) para
+#                   embeberlo en el correo de confirmación — los QR de la SPA
+#                   siguen siendo 100% client-side (qrcode/jsbarcode en Vue), esto
+#                   es exclusivamente para que el QR también aparezca dentro del
+#                   correo mismo, donde no hay JS que lo genere. Antes de esta
+#                   tarea no había NINGÚN uso server-side de generación de
+#                   imágenes, por eso se había excluido deliberadamente.
 #   - opcache    -> rendimiento en producción (requerido por la tarea)
 #   - pcntl      -> manejo correcto de señales (SIGTERM) en el worker de colas
 #                   `php artisan queue:work` del servicio queue-worker
-# 🛡️🐛 Encontrado con un `docker build` real durante la validación de esta
-# tarea: purgar solo "libzip-dev" también arrastró la librería compartida en
-# TIEMPO DE EJECUCIÓN "libzip" (libzip.so.5) como dependencia huérfana de apk
-# — apk no tiene forma de saber que el zip.so ya compilado de PHP la sigue
-# necesitando, porque esa dependencia nunca quedó registrada como paquete apk.
-# Resultado: la extensión zip fallaba al cargar en cada arranque de PHP. Se
-# declara "libzip" explícitamente para que sobreviva la purga de los -dev.
+# 🛡️🐛 Encontrado con un `docker build` real durante la validación del Módulo 6:
+# purgar solo los paquetes "-dev" también arrastra la librería compartida en
+# TIEMPO DE EJECUCIÓN (ej. libzip.so.5) como dependencia huérfana de apk — apk
+# no tiene forma de saber que el .so ya compilado de PHP la sigue necesitando,
+# porque esa dependencia nunca quedó registrada como paquete apk. Por eso
+# "libzip" y "libpng" se declaran explícitamente, para que sobrevivan la purga
+# de los -dev correspondientes.
 RUN apk add --no-cache \
         libzip \
         libzip-dev \
+        libpng \
+        libpng-dev \
         oniguruma-dev \
         netcat-openbsd \
     && docker-php-ext-install -j"$(nproc)" \
@@ -77,9 +85,10 @@ RUN apk add --no-cache \
         fileinfo \
         zip \
         bcmath \
+        gd \
         opcache \
         pcntl \
-    && apk del --no-cache libzip-dev oniguruma-dev
+    && apk del --no-cache libzip-dev libpng-dev oniguruma-dev
 
 # Configuración de OPcache para producción (validate_timestamps=0: exige que
 # cada despliegue reconstruya la imagen o reinicie el contenedor — no recarga
