@@ -20,11 +20,21 @@
         </span>
       </div>
     </div>
+
+    <div class="mt-8 pt-6 border-t border-gray-100">
+      <button
+        type="button"
+        @click="logout"
+        class="w-full sm:w-auto px-5 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-sm rounded-xl transition-colors cursor-pointer"
+      >
+        🚪 Cerrar Sesión
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { useAuth } from '../composables/useAuth';
 
-const { user } = useAuth();
+const { user, logout } = useAuth();
 </script>
