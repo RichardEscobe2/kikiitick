@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  static-analysis:
+    name: PHPStan (Larastan)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, bcmath, gd, zip, fileinfo, opcache
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run PHPStan static analysis
+        run: ./vendor/bin/phpstan analyse --level=1 app --no-progress --memory-limit=512M
+
+  tests:
+    name: Automated Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          # pdo_sqlite: la suite de tests usa SQLite en memoria (phpunit.xml),
+          # aislada de cualquier base de datos real — no requiere levantar un
+          # servicio de BD en el runner.
+          extensions: mbstring, pdo_sqlite, bcmath, gd, zip, fileinfo, opcache
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Execute automated tests
+        run: php artisan test
