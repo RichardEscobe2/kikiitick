@@ -75,7 +75,7 @@
             <div class="flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-gray-600 mb-4 bg-gray-50 p-3 rounded-xl">
               <div class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 bg-indigo-600 rounded-md"></span> Seleccionado</div>
               <div class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 bg-gray-300 rounded-md"></span> Ocupado</div>
-              <div class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 bg-gray-100 border border-dashed border-gray-400 rounded-md"></span> Pasillo</div>
+              <div class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 rounded-md border border-dashed border-gray-300"></span> Pasillo (espacio vacío)</div>
               <div class="text-[11px] text-gray-500 font-semibold">🔍 Usa los controles de zoom o arrastra para navegar el plano</div>
             </div>
 
@@ -110,17 +110,14 @@
                       <text x="0" y="14" text-anchor="middle" fill="#0f172a" font-weight="800" font-size="11">360°</text>
                     </g>
 
+                    <!-- Pasillos: NO se dibuja ningún nodo en su posición — el hueco
+                         resultante en la secuencia de butacas del anillo ya se lee,
+                         por sí solo, como el corredor real (más claro que un punto
+                         gris de 3px que fácilmente se confunde con decoración). -->
                     <g v-for="(asientosFila, filaNombre) in asientosAgrupadosPorFila" :key="filaNombre">
                       <template v-for="(asiento, idx) in asientosFila" :key="asiento.id">
-                        <circle
-                          v-if="asiento.es_pasillo"
-                          :cx="calcularPosicionArena(filaNombre, idx, asientosFila.length).x"
-                          :cy="calcularPosicionArena(filaNombre, idx, asientosFila.length).y"
-                          r="3"
-                          fill="#d1d5db"
-                        />
                         <g
-                          v-else
+                          v-if="!asiento.es_pasillo"
                           @click="toggleSeleccionAsiento(asiento)"
                           class="cursor-pointer"
                           :class="{ 'pointer-events-none': (asiento.estatus !== 'disponible' && !estaSeleccionado(asiento.id)) || reservaExito }"
@@ -150,7 +147,13 @@
                       <span class="w-8 text-xs font-bold text-gray-500 text-center uppercase shrink-0 font-mono">{{ filaNombre }}</span>
                       <div class="flex items-center gap-1.5">
                         <template v-for="asiento in asientosFila" :key="asiento.id">
-                          <div v-if="asiento.es_pasillo" class="w-7 h-7 bg-gray-100 rounded-md border border-dashed border-gray-200 flex items-center justify-center text-[10px] text-gray-400 shrink-0">🚶</div>
+                          <!-- Pasillo: espaciador puramente vacío — sin botón, sin ícono,
+                               sin contenido — que abre un hueco real en la fila para que
+                               los asientos se vean físicamente separados en bloques
+                               distintos (Bloque A | PASILLO | Bloque B), en vez de una
+                               casilla con estilo propio que el ojo sigue leyendo como
+                               "otro elemento de la fila". -->
+                          <div v-if="asiento.es_pasillo" class="w-6 h-7 shrink-0" title="Pasillo"></div>
                           <button
                             v-else
                             @click="toggleSeleccionAsiento(asiento)"

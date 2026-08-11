@@ -37,9 +37,20 @@ class Teatro extends Model
         return $this->hasMany(ZonaTeatro::class, 'teatro_id');
     }
 
+    /**
+     * 🛡️ Root cause de Módulo 4 (pasillos "invisibles" en el plano interactivo):
+     * sin este orderBy, MySQL no garantiza devolver los asientos en el orden de
+     * inserción (slot_index 1..N) — en la práctica los devolvía en un orden
+     * interno arbitrario, así que los slots de pasillo aparecían agrupados al
+     * inicio de cada fila en vez de intercalados en su posición real entre
+     * bloques de butacas. EventoController::getMapaEvento() (y cualquier otro
+     * consumidor de esta relación) dependen de este orden para que el frontend
+     * pueda recorrer la fila secuencialmente y dibujar el hueco donde de verdad
+     * va.
+     */
     public function asientos()
     {
-        return $this->hasMany(Asiento::class, 'teatro_id');
+        return $this->hasMany(Asiento::class, 'teatro_id')->orderBy('fila')->orderBy('slot_index');
     }
 
     public function eventos()
