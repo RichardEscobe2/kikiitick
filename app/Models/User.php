@@ -77,6 +77,18 @@ class User extends Authenticatable
     }
 
     /**
+     * Datos de recinto/contacto propuestos al pedir convertirse en organizador
+     * (auto-servicio vía AuthController::solicitudOrganizador) — null si nunca
+     * solicitó por esa vía o si registró su cuenta de organizador directamente
+     * con AuthController::registerOrganizador (esa crea el Teatro de una vez,
+     * sin pasar por esta tabla).
+     */
+    public function solicitudOrganizador()
+    {
+        return $this->hasOne(SolicitudOrganizador::class, 'usuario_id');
+    }
+
+    /**
      * Organizador que emplea a esta cuenta de cajero/vendedor (null si no aplica,
      * ej. clientes, admins, o el propio organizador).
      */

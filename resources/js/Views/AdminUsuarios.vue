@@ -219,9 +219,9 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 text-sm">
-              <tr 
-                v-for="solicitud in solicitudesFiltradas" 
-                :key="solicitud.id" 
+              <tr
+                v-for="solicitud in solicitudesFiltradas"
+                :key="solicitud.id"
                 class="hover:bg-gray-50/50 transition-colors"
               >
                 <!-- SOLICITANTE -->
@@ -232,24 +232,26 @@
 
                 <!-- CONTACTO -->
                 <td class="py-4 px-6 text-xs text-gray-600">
-                  <p v-if="solicitud.empresa"><strong>Empresa:</strong> {{ solicitud.empresa }}</p>
-                  <p v-if="solicitud.telefono"><strong>Tel:</strong> {{ solicitud.telefono }}</p>
-                  <span v-if="!solicitud.empresa && !solicitud.telefono" class="text-gray-400 italic">No especificado</span>
+                  <template v-if="datosRecinto(solicitud)">
+                    <p v-if="datosRecinto(solicitud).telefono"><strong>Tel:</strong> {{ datosRecinto(solicitud).telefono }}</p>
+                    <p v-if="datosRecinto(solicitud).rfc"><strong>RFC:</strong> {{ datosRecinto(solicitud).rfc }}</p>
+                  </template>
+                  <span v-if="!datosRecinto(solicitud)?.telefono && !datosRecinto(solicitud)?.rfc" class="text-gray-400 italic">No especificado</span>
                 </td>
 
                 <!-- RECINTO -->
                 <td class="py-4 px-6">
-                  <div v-if="solicitud.teatros && solicitud.teatros.length > 0">
-                    <p class="font-bold text-indigo-700">{{ solicitud.teatros[0].nombre }}</p>
+                  <div v-if="datosRecinto(solicitud)">
+                    <p class="font-bold text-indigo-700">{{ datosRecinto(solicitud).nombre }}</p>
                   </div>
                   <span v-else class="text-xs text-gray-400 italic">Sin recinto registrado</span>
                 </td>
 
                 <!-- UBICACIÓN / CAPACIDAD -->
                 <td class="py-4 px-6 text-xs text-gray-600">
-                  <div v-if="solicitud.teatros && solicitud.teatros.length > 0">
-                    <p>📍 {{ solicitud.teatros[0].ubicacion || 'Sin dirección' }}</p>
-                    <p class="font-semibold text-gray-800">👥 Capacidad: {{ solicitud.teatros[0].capacidad || 'N/A' }} personas</p>
+                  <div v-if="datosRecinto(solicitud)">
+                    <p>📍 {{ datosRecinto(solicitud).direccion || 'Sin dirección' }}</p>
+                    <p class="font-semibold text-gray-800">👥 Capacidad: {{ datosRecinto(solicitud).capacidad || 'N/A' }} personas</p>
                   </div>
                   <span v-else class="text-gray-400 italic">N/A</span>
                 </td>
@@ -257,7 +259,14 @@
                 <!-- ACCIONES -->
                 <td class="py-4 px-6 text-center">
                   <div class="flex items-center justify-center gap-2">
-                    <button 
+                    <button
+                      @click="abrirDetalleSolicitud(solicitud)"
+                      class="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                      title="Ver detalle completo"
+                    >
+                      👁️ Detalle
+                    </button>
+                    <button
                       @click="aprobarOrganizador(solicitud.id)"
                       :disabled="procesandoAccion === solicitud.id"
                       class="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-50"
@@ -265,7 +274,7 @@
                     >
                       ✅ Aprobar
                     </button>
-                    <button 
+                    <button
                       @click="rechazarOrganizador(solicitud.id)"
                       :disabled="procesandoAccion === solicitud.id"
                       class="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-50"
@@ -352,8 +361,8 @@
             >
               Cancelar
             </button>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               :disabled="guardandoPassword"
               class="px-4 py-2.5 bg-amber-500 text-white text-xs font-bold rounded-xl hover:bg-amber-600 disabled:opacity-50 transition-all shadow-md"
             >
@@ -363,6 +372,109 @@
         </form>
       </div>
     </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL DE DETALLE DE SOLICITUD DE ORGANIZADOR -->
+    <!-- ========================================== -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="detalleAbierto"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+        @click.self="cerrarDetalleSolicitud"
+      >
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="opacity-0 scale-95"
+          enter-to-class="opacity-100 scale-100"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="opacity-100 scale-100"
+          leave-to-class="opacity-0 scale-95"
+        >
+          <div v-if="detalleAbierto && solicitudDetalle" class="bg-white rounded-3xl shadow-2xl max-w-lg w-full border border-gray-100 overflow-hidden max-h-[85vh] flex flex-col">
+            <!-- Encabezado -->
+            <div class="px-7 pt-7 pb-5 border-b border-gray-100 shrink-0">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-bold text-indigo-600 uppercase tracking-wide">Solicitud de organizador</p>
+                  <h3 class="text-lg font-extrabold text-gray-900 mt-0.5">{{ solicitudDetalle.nombre }}</h3>
+                  <p class="text-xs text-gray-500 font-mono mt-0.5">{{ solicitudDetalle.correo }}</p>
+                </div>
+                <button @click="cerrarDetalleSolicitud" class="text-gray-400 hover:text-gray-600 font-bold text-xl leading-none shrink-0">✕</button>
+              </div>
+            </div>
+
+            <!-- Cuerpo -->
+            <div class="px-7 py-6 space-y-6 overflow-y-auto">
+              <div v-if="!datosRecinto(solicitudDetalle)" class="text-sm text-gray-400 italic text-center py-6">
+                Esta solicitud no tiene datos de recinto registrados.
+              </div>
+              <template v-else>
+                <div>
+                  <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Información de contacto</p>
+                  <dl class="grid grid-cols-2 gap-3 text-sm">
+                    <div class="bg-gray-50 rounded-xl p-3">
+                      <dt class="text-[11px] text-gray-500 font-semibold">Teléfono</dt>
+                      <dd class="text-gray-900 font-medium mt-0.5">{{ datosRecinto(solicitudDetalle).telefono || 'No especificado' }}</dd>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-3">
+                      <dt class="text-[11px] text-gray-500 font-semibold">RFC / ID fiscal</dt>
+                      <dd class="text-gray-900 font-medium mt-0.5">{{ datosRecinto(solicitudDetalle).rfc || 'No especificado' }}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div>
+                  <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Datos del recinto</p>
+                  <dl class="space-y-3 text-sm">
+                    <div class="bg-gray-50 rounded-xl p-3">
+                      <dt class="text-[11px] text-gray-500 font-semibold">Nombre</dt>
+                      <dd class="text-gray-900 font-bold mt-0.5">{{ datosRecinto(solicitudDetalle).nombre }}</dd>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-3">
+                      <dt class="text-[11px] text-gray-500 font-semibold">Dirección</dt>
+                      <dd class="text-gray-900 font-medium mt-0.5">📍 {{ datosRecinto(solicitudDetalle).direccion || 'Sin dirección' }}</dd>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-3">
+                      <dt class="text-[11px] text-gray-500 font-semibold">Capacidad</dt>
+                      <dd class="text-gray-900 font-medium mt-0.5">👥 {{ datosRecinto(solicitudDetalle).capacidad || 'N/A' }} personas</dd>
+                    </div>
+                    <div v-if="datosRecinto(solicitudDetalle).descripcion" class="bg-gray-50 rounded-xl p-3">
+                      <dt class="text-[11px] text-gray-500 font-semibold">Descripción</dt>
+                      <dd class="text-gray-700 mt-0.5 leading-relaxed">{{ datosRecinto(solicitudDetalle).descripcion }}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </template>
+            </div>
+
+            <!-- Acciones -->
+            <div class="px-7 py-5 border-t border-gray-100 bg-gray-50/60 flex gap-3 shrink-0">
+              <button
+                @click="rechazarDesdeDetalle(solicitudDetalle.id)"
+                :disabled="procesandoAccion === solicitudDetalle.id"
+                class="flex-1 py-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+              >
+                ❌ Rechazar
+              </button>
+              <button
+                @click="aprobarDesdeDetalle(solicitudDetalle.id)"
+                :disabled="procesandoAccion === solicitudDetalle.id"
+                class="flex-1 py-3 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl text-sm font-bold transition-all shadow-md disabled:opacity-50"
+              >
+                ✅ Aprobar
+              </button>
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </Transition>
 
   </div>
 </template>
@@ -414,19 +526,77 @@ const usuariosFiltrados = computed(() => {
   });
 });
 
+// Extrae los datos de recinto/contacto de una solicitud, sin importar si
+// vinieron del auto-servicio (solicitud_organizador, con teléfono/RFC/
+// descripción) o del registro directo de invitado (teatros[0], que ya crea el
+// Teatro al registrarse y no tiene esos campos de contacto). null si ninguno
+// de los dos existe (no debería pasar en la práctica, pero evita reventar la
+// tabla si algún día sí).
+const datosRecinto = (solicitud) => {
+  if (solicitud.solicitud_organizador) {
+    const s = solicitud.solicitud_organizador;
+    return {
+      nombre: s.recinto_nombre,
+      direccion: s.recinto_direccion,
+      capacidad: s.recinto_capacidad,
+      telefono: s.telefono_contacto,
+      rfc: s.rfc,
+      descripcion: s.descripcion,
+    };
+  }
+  if (solicitud.teatros?.length > 0) {
+    const t = solicitud.teatros[0];
+    return {
+      nombre: t.nombre,
+      direccion: t.ubicacion,
+      capacidad: t.capacidad_total,
+      telefono: null,
+      rfc: null,
+      descripcion: null,
+    };
+  }
+  return null;
+};
+
 // 2. Solicitudes filtradas por Búsqueda
 const solicitudesFiltradas = computed(() => {
   return solicitudes.value.filter(s => {
     const query = busqueda.value.toLowerCase().trim();
-    const teatroNombre = s.teatros && s.teatros.length > 0 ? s.teatros[0].nombre : '';
+    const recinto = datosRecinto(s);
 
-    return !query || 
+    return !query ||
       s.nombre?.toLowerCase().includes(query) ||
       s.correo?.toLowerCase().includes(query) ||
-      s.empresa?.toLowerCase().includes(query) ||
-      teatroNombre.toLowerCase().includes(query);
+      recinto?.nombre?.toLowerCase().includes(query) ||
+      recinto?.direccion?.toLowerCase().includes(query);
   });
 });
+
+// --- MODAL DE DETALLE DE SOLICITUD ---
+const detalleAbierto = ref(false);
+const solicitudDetalle = ref(null);
+
+const abrirDetalleSolicitud = (solicitud) => {
+  solicitudDetalle.value = solicitud;
+  detalleAbierto.value = true;
+};
+
+const cerrarDetalleSolicitud = () => {
+  detalleAbierto.value = false;
+  solicitudDetalle.value = null;
+};
+
+// Acciones lanzadas desde el modal de detalle: reutilizan aprobarOrganizador/
+// rechazarOrganizador (definidas más abajo) y cierran el modal al terminar.
+const aprobarDesdeDetalle = async (id) => {
+  await aprobarOrganizador(id);
+  cerrarDetalleSolicitud();
+};
+
+const rechazarDesdeDetalle = async (id) => {
+  await rechazarOrganizador(id);
+  cerrarDetalleSolicitud();
+};
 
 const limpiarFiltros = () => {
   busqueda.value = '';

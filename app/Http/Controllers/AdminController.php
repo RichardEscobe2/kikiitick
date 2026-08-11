@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Teatro;
 use App\Models\User;
 use App\Mail\OrganizadorAprobadoMail;
+use App\Services\SeatGeneratorService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -80,10 +83,14 @@ class AdminController extends Controller
     // 🆕 NUVOS MÉTODOS DE GESTIÓN DE ORGANIZADORES
     // ==========================================
 
-    // Obtener solicitudes de organizadores pendientes con su recinto/teatro inicial
+    // Obtener solicitudes de organizadores pendientes con su recinto/teatro inicial.
+    // `teatros`: cubre las solicitudes que vinieron de registerOrganizador() (invitado,
+    // crea el Teatro de una vez). `solicitudOrganizador`: cubre las que vinieron del
+    // auto-servicio (AuthController::solicitudOrganizador), donde el Teatro todavía
+    // no existe — el frontend usa una u otra según cuál venga poblada.
     public function getSolicitudesOrganizador()
     {
-        $solicitudes = User::with('teatros')
+        $solicitudes = User::with(['teatros', 'solicitudOrganizador'])
             ->where('estatus_organizador', 'pendiente')
             ->orderBy('id', 'desc')
             ->get();
@@ -94,11 +101,36 @@ class AdminController extends Controller
     // Aprobar solicitud de organizador
     public function aprobarOrganizador($id)
     {
-        $usuario = User::with('teatros')->findOrFail($id);
+        $usuario = User::with(['teatros', 'solicitudOrganizador'])->findOrFail($id);
 
-        $usuario->rol = 'organizador';
-        $usuario->estatus_organizador = 'aprobado';
-        $usuario->save();
+        DB::transaction(function () use ($usuario) {
+            // 🏛️ Si la solicitud vino del auto-servicio (no de registerOrganizador,
+            // que ya crea el Teatro al registrarse), todavía no existe ningún
+            // recinto — se crea aquí a partir de lo que el solicitante propuso,
+            // con los mismos valores por defecto de matriz de asientos que usa
+            // registerOrganizador() para invitados (15 filas x 20 asientos, 2
+            // pasillos, escenario arriba).
+            if ($usuario->teatros->isEmpty() && $usuario->solicitudOrganizador) {
+                $solicitud = $usuario->solicitudOrganizador;
+
+                $teatro = Teatro::create([
+                    'usuario_id'         => $usuario->id,
+                    'nombre'             => $solicitud->recinto_nombre,
+                    'ubicacion'          => $solicitud->recinto_direccion,
+                    'capacidad_total'    => $solicitud->recinto_capacidad,
+                    'filas_totales'      => 15,
+                    'asientos_por_fila'  => 20,
+                    'pasillos_slots'     => [5, 15],
+                    'posicion_escenario' => 'arriba',
+                ]);
+
+                SeatGeneratorService::generarAsientosParaTeatro($teatro);
+            }
+
+            $usuario->rol = 'organizador';
+            $usuario->estatus_organizador = 'aprobado';
+            $usuario->save();
+        }, attempts: 3);
 
         // Enviar correo de notificación de forma síncrona (garantiza entrega real; no depende de un worker de cola)
         try {
@@ -111,7 +143,7 @@ class AdminController extends Controller
 
         return response()->json([
             'mensaje' => "El usuario {$usuario->nombre} ha sido aprobado como organizador exitosamente.",
-            'usuario' => $usuario
+            'usuario' => $usuario->fresh(['teatros', 'solicitudOrganizador'])
         ]);
     }
 

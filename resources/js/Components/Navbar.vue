@@ -16,14 +16,20 @@
               Explorar
             </router-link>
             <router-link
+              v-if="enlaceOrganizar"
               :to="enlaceOrganizar"
               class="pb-1 border-b-2 border-transparent text-gray-600 hover:text-gray-900 transition-colors"
             >
               Organizar
             </router-link>
-            <a href="#footer" class="pb-1 border-b-2 border-transparent text-gray-600 hover:text-gray-900 transition-colors">
-              Nosotros
-            </a>
+            <button
+              v-else
+              type="button"
+              @click="abrirSolicitudModal"
+              class="pb-1 border-b-2 border-transparent text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+            >
+              Organizar
+            </button>
           </nav>
         </div>
 
@@ -125,8 +131,8 @@
       <div class="md:hidden grid grid-cols-3 items-center h-14">
         <div class="relative justify-self-start">
           <!-- Hamburguesa: abre un dropdown con los enlaces que en desktop
-               viven en la barra de navegación (Organizar/Nosotros) — el
-               header móvil no tiene espacio para mostrarlos todos sueltos. -->
+               viven en la barra de navegación (Organizar) — el header móvil
+               no tiene espacio para mostrarlos sueltos. -->
           <button
             type="button"
             @click="menuMovilAbierto = !menuMovilAbierto"
@@ -143,19 +149,21 @@
             class="absolute left-0 mt-2 w-48 bg-white text-gray-800 rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden py-2"
           >
             <router-link
+              v-if="enlaceOrganizar"
               :to="enlaceOrganizar"
               @click="menuMovilAbierto = false"
               class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition"
             >
               Organizar
             </router-link>
-            <a
-              href="#footer"
-              @click="menuMovilAbierto = false"
-              class="block px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition"
+            <button
+              v-else
+              type="button"
+              @click="handleOrganizarMovil"
+              class="block w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-600 transition cursor-pointer"
             >
-              Nosotros
-            </a>
+              Organizar
+            </button>
           </div>
         </div>
 
@@ -184,17 +192,37 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useAuth } from '../composables/useAuth';
+import { useSolicitudOrganizadorModal } from '../composables/useSolicitudOrganizadorModal';
 
 const { user, isAuthenticated, userRole, isVendedor, logout } = useAuth();
+const { abrirSolicitudModal } = useSolicitudOrganizadorModal();
 const menuAbierto = ref(false);
 const menuMovilAbierto = ref(false);
 
 const inicialUsuario = computed(() => (user.value?.nombre || 'U').trim().charAt(0).toUpperCase());
 
-// "Organizar": a un organizador aprobado lo manda directo a su panel; a
-// cualquier otro rol (incluido sin sesión) lo invita a solicitar cuenta de
-// organizador — nunca un enlace muerto.
-const enlaceOrganizar = computed(() => (userRole.value === 'organizador' ? '/organizador' : '/registro-organizador'));
+// "Organizar" depende de la sesión y el rol — nunca debe ser un enlace muerto:
+// - Invitado: formulario público de registro de organizador (crea cuenta + Teatro).
+// - organizador aprobado / admin: directo a su panel real (no hay rutas
+//   /organizador/dashboard ni /admin/dashboard en este proyecto — son
+//   /organizador y /admin/usuarios).
+// - cliente (y cualquier otro rol autenticado, ej. vendedor): null → no navega,
+//   abre el modal de solicitud (botón desktop llama abrirSolicitudModal
+//   directo; mobile pasa por handleOrganizarMovil para cerrar el dropdown antes).
+//   Antes de este fix, cualquier usuario autenticado no-organizador caía en
+//   '/registro-organizador', que tiene meta:{guestOnly:true} — el guard del
+//   router lo rebotaba a Home en silencio.
+const enlaceOrganizar = computed(() => {
+  if (!isAuthenticated.value) return '/registro-organizador';
+  if (userRole.value === 'organizador') return '/organizador';
+  if (userRole.value === 'admin') return '/admin/usuarios';
+  return null;
+});
+
+const handleOrganizarMovil = () => {
+  menuMovilAbierto.value = false;
+  abrirSolicitudModal();
+};
 
 const handleLogout = () => {
   menuAbierto.value = false;

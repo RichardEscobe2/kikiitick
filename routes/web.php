@@ -103,6 +103,12 @@ Route::prefix('api')->group(function () {
 
         Route::post('/logout', [AuthController::class, 'logout']);
 
+        // 🆕 Auto-servicio: un 'cliente' ya autenticado pide convertirse en
+        // organizador (a diferencia de /registro-organizador, que es para
+        // invitados y crea cuenta + Teatro desde cero). Autorización por rol
+        // dentro del controlador, mismo patrón que /boletos/comprar-pos arriba.
+        Route::post('/solicitud-organizador', [AuthController::class, 'solicitudOrganizador']);
+
         // 🎫 Compra/reserva de boletos: acción de cualquier cliente autenticado
         Route::post('/boletos/reservar', [CompraController::class, 'reservarAsientos']);
         Route::post('/boletos/comprar', [CompraController::class, 'procesarCompra']);

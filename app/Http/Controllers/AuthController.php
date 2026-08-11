@@ -231,6 +231,89 @@ class AuthController extends Controller
         return response()->json($request->user());
     }
 
+    /**
+     * Solicitud de auto-servicio (RN-02) para que un usuario 'cliente' YA REGISTRADO
+     * pida convertirse en organizador, sin pasar por registerOrganizador() (que crea
+     * una cuenta y un Teatro nuevos desde cero — pensado para invitados, no para
+     * alguien que ya tiene sesión). Nunca toca 'rol' aquí: la promoción real solo
+     * ocurre vía AdminController::aprobarOrganizador(), igual que el resto de
+     * solicitudes de organizador.
+     *
+     * Los datos de recinto/contacto se guardan en `solicitudes_organizador` (NO en
+     * `teatros` todavía) — son una propuesta que el admin revisa antes de aprobar;
+     * el Teatro real recién se crea en aprobarOrganizador().
+     */
+    public function solicitudOrganizador(Request $request)
+    {
+        $usuario = $request->user();
+
+        if ($usuario->rol !== 'cliente') {
+            return response()->json([
+                'message' => 'Solo las cuentas de cliente pueden solicitar convertirse en organizador.'
+            ], 403);
+        }
+
+        if ($usuario->estatus_organizador === 'pendiente') {
+            return response()->json([
+                'message' => 'Ya tienes una solicitud de organizador en revisión.'
+            ], 409);
+        }
+
+        if ($usuario->estatus_organizador === 'aprobado') {
+            return response()->json([
+                'message' => 'Tu cuenta ya es de organizador.'
+            ], 409);
+        }
+
+        // 🛡️ Campos opcionales: el formulario del frontend los inicializa como
+        // cadena vacía ('') en vez de omitirlos — sin esto, 'nullable' no los
+        // trataría como ausentes y el regex de abajo los rechazaría igual que
+        // un valor inválido de verdad.
+        $request->merge([
+            'rfc'         => $request->filled('rfc') ? $request->input('rfc') : null,
+            'descripcion' => $request->filled('descripcion') ? $request->input('descripcion') : null,
+        ]);
+
+        // 🛡️ $request->validated() (nunca $request->all()) + $fillable en el modelo:
+        // ninguna clave fuera de esta lista puede llegar a la fila insertada.
+        // Estas reglas son la autoridad final — el saneo en vivo de
+        // SolicitudOrganizadorModal.vue es solo cosmético/inmediato para el
+        // usuario y debe reflejar EXACTAMENTE estos mismos patrones.
+        $validated = $request->validate([
+            'recinto_nombre'      => 'required|string|max:250|regex:/^[a-zA-Z\s\x{00C1}\x{00C9}\x{00CD}\x{00D3}\x{00DA}\x{00E1}\x{00E9}\x{00ED}\x{00F3}\x{00FA}\x{00D1}\x{00F1}]+$/u',
+            'recinto_direccion'   => 'required|string|max:255',
+            'recinto_capacidad'   => 'required|integer|min:1|max:100000',
+            // digits:10 exige EXACTAMENTE 10 dígitos y nada más (ni espacios, ni
+            // '+', ni letras) — coincide con el bloqueo por tecla del frontend,
+            // que ya no permite escribir esos caracteres en el campo.
+            'telefono_contacto'   => 'required|string|digits:10',
+            'rfc'                 => 'nullable|string|regex:/^[A-Z0-9]{12,13}$/',
+            'descripcion'         => 'nullable|string|max:1000',
+        ], [
+            'telefono_contacto.digits'  => 'El teléfono debe tener exactamente 10 dígitos.',
+            'rfc.regex'                 => 'El RFC debe tener entre 12 y 13 caracteres (solo letras mayúsculas y números).',
+            'recinto_nombre.regex'      => 'El nombre del recinto solo puede contener letras y espacios (sin números ni símbolos).',
+        ]);
+
+        // 'ninguno' (nunca solicitó) o 'rechazado' (solicitud previa denegada): ambos
+        // pueden solicitar/reintentar. updateOrCreate: reenviar sobreescribe la
+        // propuesta anterior en vez de acumular historial.
+        DB::transaction(function () use ($usuario, $validated) {
+            $usuario->solicitudOrganizador()->updateOrCreate(
+                ['usuario_id' => $usuario->id],
+                $validated
+            );
+
+            $usuario->estatus_organizador = 'pendiente';
+            $usuario->save();
+        }, attempts: 3);
+
+        return response()->json([
+            'message' => 'Solicitud enviada. Un administrador la revisará pronto.',
+            'usuario' => $usuario->fresh('solicitudOrganizador'),
+        ], 200);
+    }
+
     public function forgotPassword(Request $request)
     {
         $request->validate([

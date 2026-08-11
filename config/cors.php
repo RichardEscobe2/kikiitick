@@ -33,7 +33,18 @@ return [
         env('APP_URL'),
     ]),
 
-    'allowed_origins_patterns' => [],
+    // 🌐 Patrones adicionales para desarrollo: el plan gratuito de ngrok asigna
+    // un subdominio *.ngrok-free.dev NUEVO cada vez que se reinicia el túnel —
+    // en vez de tener que actualizar 'allowed_origins' (arriba) cada vez, este
+    // patrón acepta cualquier subdominio de ngrok automáticamente. Igual para
+    // localhost en cualquier puerto (Vite dev server puede cambiar de puerto
+    // si 5173 está ocupado). No afecta producción: 'kikiitick.com.mx' sigue
+    // siendo un origen explícito de la lista de arriba, no depende de patrones.
+    'allowed_origins_patterns' => [
+        '#^https://.*\.ngrok-free\.dev$#',
+        '#^https?://localhost(:\d+)?$#',
+        '#^https?://127\.0\.0\.1(:\d+)?$#',
+    ],
 
     'allowed_headers' => ['*'],
 
