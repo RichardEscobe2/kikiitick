@@ -1,0 +1,14 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    # 🛡️ Baseline generado el 2026-08-11: 24 falsos positivos de la regla
+    # larastan.relationExistence, que requiere anotaciones @return nativas en
+    # los métodos de relación Eloquent (ninguno de los modelos actuales las
+    # tiene) para resolverlas por análisis estático puro — no es un problema
+    # de conexión a BD. Congela el estado actual sin tocar los modelos de
+    # negocio; el CI falla ante errores NUEVOS, no ante estos ya conocidos.
+    - phpstan-baseline.neon
+
+parameters:
+    level: 1
+    paths:
+        - app

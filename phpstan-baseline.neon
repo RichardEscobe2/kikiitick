@@ -1,0 +1,55 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Relation ''solicitudOrganizador'' is not found in App\\Models\\User model\.$#'
+			identifier: larastan.relationExistence
+			count: 2
+			path: app/Http/Controllers/AdminController.php
+
+		-
+			message: '#^Relation ''teatros'' is not found in App\\Models\\User model\.$#'
+			identifier: larastan.relationExistence
+			count: 2
+			path: app/Http/Controllers/AdminController.php
+
+		-
+			message: '#^Relation ''detalles'' is not found in App\\Models\\Venta model\.$#'
+			identifier: larastan.relationExistence
+			count: 2
+			path: app/Http/Controllers/CompraController.php
+
+		-
+			message: '#^Relation ''teatro'' is not found in App\\Models\\Evento model\.$#'
+			identifier: larastan.relationExistence
+			count: 4
+			path: app/Http/Controllers/EventoController.php
+
+		-
+			message: '#^Relation ''taquilla'' is not found in App\\Models\\User model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Http/Controllers/TaquillaController.php
+
+		-
+			message: '#^Relation ''teatro'' is not found in App\\Models\\Taquilla model\.$#'
+			identifier: larastan.relationExistence
+			count: 5
+			path: app/Http/Controllers/TaquillaController.php
+
+		-
+			message: '#^Relation ''asientos'' is not found in App\\Models\\Teatro model\.$#'
+			identifier: larastan.relationExistence
+			count: 3
+			path: app/Http/Controllers/TeatroController.php
+
+		-
+			message: '#^Relation ''teatro'' is not found in App\\Models\\ZonaTeatro model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Http/Controllers/TeatroController.php
+
+		-
+			message: '#^Relation ''zonas'' is not found in App\\Models\\Teatro model\.$#'
+			identifier: larastan.relationExistence
+			count: 4
+			path: app/Http/Controllers/TeatroController.php

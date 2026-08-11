@@ -136,6 +136,13 @@ class AuthController extends Controller
         $usuario = User::where('correo', $request->correo)->first();
 
         if (!$usuario || !Hash::check($request->contrasena, $usuario->contrasena)) {
+            // 🛡️ Auditoría: nunca se registra la contraseña recibida, solo el correo
+            // intentado — suficiente para detectar fuerza bruta sin guardar secretos.
+            Log::channel('auditoria')->warning('Intento de login fallido', [
+                'correo_intentado' => $request->correo,
+                'ip'               => $request->ip(),
+            ]);
+
             return response()->json([
                 'message' => 'Las credenciales proporcionadas son incorrectas.'
             ], 401);
@@ -143,6 +150,12 @@ class AuthController extends Controller
 
         // 🛡️ Bloquea el login si la cuenta no ha completado la verificación por OTP/correo.
         if (!$usuario->correo_verificado_at) {
+            Log::channel('auditoria')->warning('Intento de login con cuenta no verificada', [
+                'usuario_id' => $usuario->id,
+                'correo'     => $usuario->correo,
+                'ip'         => $request->ip(),
+            ]);
+
             return response()->json([
                 'message' => 'Account not verified. Please check your email for the verification code.'
             ], 403);
@@ -150,6 +163,12 @@ class AuthController extends Controller
 
         Auth::login($usuario);
         $request->session()->regenerate();
+
+        Log::channel('auditoria')->info('Login exitoso', [
+            'usuario_id' => $usuario->id,
+            'correo'     => $usuario->correo,
+            'ip'         => $request->ip(),
+        ]);
 
         return response()->json([
             'message' => 'Inicio de sesión exitoso.',
@@ -216,10 +235,20 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        // 🛡️ Capturado ANTES de Auth::logout(): una vez cerrada la sesión,
+        // $request->user() ya no resuelve al usuario saliente.
+        $usuario = $request->user();
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        Log::channel('auditoria')->info('Logout', [
+            'usuario_id' => $usuario?->id,
+            'correo'     => $usuario?->correo,
+            'ip'         => $request->ip(),
+        ]);
 
         return response()->json([
             'message' => 'Sesión cerrada correctamente.'

@@ -16,7 +16,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement("ALTER TABLE usuarios MODIFY rol ENUM('admin','organizador','cliente','vendedor') NOT NULL DEFAULT 'cliente'");
+        // 🛡️ MySQL (todo entorno real: nativo/Docker/producción) conserva EXACTAMENTE
+        // el mismo ALTER crudo de siempre — comportamiento sin cambios. SQLite (solo
+        // usado por la suite de tests automatizados vía phpunit.xml) no entiende
+        // "MODIFY"; Schema::table()->enum()->change() es la ruta equivalente que sí
+        // soporta nativamente desde Laravel 11, sin depender de doctrine/dbal.
+        if (DB::getDriverName() === 'sqlite') {
+            Schema::table('usuarios', function (Blueprint $table) {
+                $table->enum('rol', ['admin', 'organizador', 'cliente', 'vendedor'])->default('cliente')->change();
+            });
+        } else {
+            DB::statement("ALTER TABLE usuarios MODIFY rol ENUM('admin','organizador','cliente','vendedor') NOT NULL DEFAULT 'cliente'");
+        }
 
         Schema::table('asientos_evento', function (Blueprint $table) {
             $table->foreignId('venta_id')->nullable()->after('reservado_por_usuario_id')
@@ -41,6 +52,12 @@ return new class extends Migration
             $table->dropConstrainedForeignId('venta_id');
         });
 
-        DB::statement("ALTER TABLE usuarios MODIFY rol ENUM('admin','organizador','cliente') NOT NULL DEFAULT 'cliente'");
+        if (DB::getDriverName() === 'sqlite') {
+            Schema::table('usuarios', function (Blueprint $table) {
+                $table->enum('rol', ['admin', 'organizador', 'cliente'])->default('cliente')->change();
+            });
+        } else {
+            DB::statement("ALTER TABLE usuarios MODIFY rol ENUM('admin','organizador','cliente') NOT NULL DEFAULT 'cliente'");
+        }
     }
 };

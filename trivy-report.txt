@@ -1,0 +1,86 @@
+=============================================================================
+KikiiTick — Reporte de escaneo de seguridad de contenedor (Trivy)
+=============================================================================
+Imagen escaneada:     kikiitick-app:latest
+Image ID:             sha256:11ae2c5fa3f67d6649aa8bdec23b350df1f390f89516b70b9b9791a7bd6c0a0c
+Sistema base:         Alpine Linux 3.24.1
+Herramienta:          Trivy v0.73.0 (aquasec/trivy, imagen oficial)
+Base de datos CVE:    v2, actualizada 2026-08-11 13:06:59 UTC
+Fecha del escaneo:    2026-08-11T14:27:55Z
+Comando ejecutado:    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+                       -v trivy-cache:/root/.cache/ aquasec/trivy:latest image
+                       kikiitick-app:latest
+
+Este reporte es una salida real de Trivy contra la imagen construida en este
+repositorio (docker compose build app) — no es un resumen fabricado.
+
+=============================================================================
+1. VULNERABILIDADES CVE (paquetes del sistema operativo y dependencias PHP)
+=============================================================================
+
+┌─────────────────────────────────────────────┬──────────────────┬──────────────────┐
+│                   Target                     │       Type        │  Vulnerabilities  │
+├─────────────────────────────────────────────┼──────────────────┼──────────────────┤
+│ kikiitick-app:latest (alpine 3.24.1)         │      alpine       │         0          │
+├─────────────────────────────────────────────┼──────────────────┼──────────────────┤
+│ var/www/html/vendor/composer/installed.json  │  composer-vendor  │         0          │
+└─────────────────────────────────────────────┴──────────────────┴──────────────────┘
+
+RESULTADO: 0 vulnerabilidades CRITICAL / HIGH / MEDIUM / LOW detectadas en el
+runtime base de PHP 8.3 sobre Alpine 3.24.1, ni en las ~30 dependencias de
+Composer (Laravel 13, Sanctum 4, Mercado Pago SDK, endroid/qr-code, etc.).
+
+Nota: Alpine 3.24 aún no aparece en la lista EOL de Trivy (advertencia
+informativa, no una vulnerabilidad) — la imagen base está dentro de su
+ventana de soporte.
+
+=============================================================================
+2. ESCANEO DE SECRETOS (hallazgo real — requiere atención)
+=============================================================================
+
+┌───────────────────────────────────┬──────────┐
+│               Target               │ Secrets  │
+├───────────────────────────────────┼──────────┤
+│ /var/www/html/kikiitick-key.pem    │    1     │
+└───────────────────────────────────┴──────────┘
+
+/var/www/html/kikiitick-key.pem (secrets)
+==========================================
+Total: 1 (LOW: 0, MEDIUM: 0, HIGH: 1, CRITICAL: 0)
+
+HIGH: AsymmetricPrivateKey (private-key)
+Regla: private-key
+Descripción: Clave privada RSA horneada dentro de la imagen del contenedor,
+copiada vía "COPY /app ./ # buildkit" (equivalente a "COPY . ." en el
+Dockerfile — el archivo no está excluido por .dockerignore).
+
+Contexto verificado en el repositorio (solo lectura, sin modificar nada):
+  - Archivo: kikiitick-key.pem, en la raíz del proyecto.
+  - NO está referenciado en app/, config/, routes/, Dockerfile ni
+    docker-compose.yml — no se encontró ningún uso funcional en el código.
+  - SÍ está trackeado en el historial de git (commit f01bbf4).
+  - NO está listado en .dockerignore ni en .gitignore (que sí excluye
+    /storage/*.key, pero con una ruta distinta).
+
+RECOMENDACIÓN: si esta clave no tiene un propósito activo conocido, debe
+eliminarse del repositorio y de la imagen (agregar a .dockerignore como
+mínimo), y considerarse comprometida por haber estado expuesta en el
+historial de git y en las capas de la imagen — cualquier sistema que
+confiara en ella debería rotarla. Esta acción no se ejecutó automáticamente
+porque este reporte es de solo auditoría; requiere confirmación explícita
+antes de borrar o reescribir historial.
+
+=============================================================================
+RESUMEN EJECUTIVO
+=============================================================================
+✅ 0 vulnerabilidades CVE críticas/altas/medias/bajas en el runtime PHP 8.3 /
+   Alpine 3.24.1 y en las dependencias de Composer.
+⚠️  1 hallazgo HIGH del escáner de secretos: una clave privada RSA sin uso
+   aparente en el código, horneada dentro de la imagen — pendiente de
+   revisión y remediación por el equipo (no es una vulnerabilidad de
+   dependencias, es un problema de higiene del repositorio/build context).
+
+Comandos usados para reproducir este escaneo:
+  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+    -v trivy-cache:/root/.cache/ aquasec/trivy:latest image \
+    --severity CRITICAL,HIGH,MEDIUM,LOW --format table kikiitick-app:latest

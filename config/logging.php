@@ -123,6 +123,20 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        // 🛡️ Auditoría de eventos de autenticación (login exitoso/fallido, logout)
+        // — archivo separado de laravel.log a propósito: mezclar eventos de
+        // seguridad con logs de aplicación (errores 500, debug, etc.) dificulta
+        // auditar accesos después de un incidente. 'daily' con retención de 90
+        // días (vs. los 14 del canal 'daily' general) porque un registro de
+        // auditoría necesita sobrevivir más tiempo que logs de depuración.
+        'auditoria' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/auditoria.log'),
+            'level' => 'info',
+            'days' => 90,
+            'replace_placeholders' => true,
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

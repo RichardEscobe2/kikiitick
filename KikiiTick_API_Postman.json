@@ -1,0 +1,280 @@
+{
+  "info": {
+    "name": "KikiiTick API",
+    "description": "Colección de referencia de los endpoints principales de la API de KikiiTick (Laravel 13 + Sanctum). Autenticación basada en cookies de sesión (Sanctum SPA), no en Bearer tokens: antes de cualquier request autenticado hay que pedir el cookie CSRF (GET {{base_url}}/sanctum/csrf-cookie) y enviar el header X-XSRF-TOKEN con el valor de la cookie XSRF-TOKEN. Postman maneja las cookies automáticamente dentro de una misma Collection Run si 'Automatically follow redirects' y el cookie jar del workspace están activos.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost", "type": "string" },
+    { "key": "correo", "value": "cliente@ejemplo.com", "type": "string" },
+    { "key": "contrasena", "value": "Password123!", "type": "string" },
+    { "key": "teatro_id", "value": "1", "type": "string" },
+    { "key": "evento_id", "value": "1", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "CSRF Cookie (Sanctum)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/sanctum/csrf-cookie", "host": ["{{base_url}}"], "path": ["sanctum", "csrf-cookie"] },
+            "description": "Debe llamarse ANTES de /api/login. Responde 204 y setea la cookie XSRF-TOKEN necesaria para el header X-XSRF-TOKEN de las siguientes peticiones."
+          },
+          "response": [
+            { "name": "204 No Content", "originalRequest": {}, "status": "No Content", "code": 204, "body": "" }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-XSRF-TOKEN", "value": "{{xsrf_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"{{correo}}\",\n  \"contrasena\": \"{{contrasena}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/login", "host": ["{{base_url}}"], "path": ["api", "login"] },
+            "description": "Rate limit: throttle:auth-throttle (5 intentos/min en producción, 20 en desarrollo). Requiere correo_verificado_at no nulo (ver Verificar Código)."
+          },
+          "response": [
+            {
+              "name": "200 OK - Login exitoso",
+              "originalRequest": {},
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"message\": \"Inicio de sesión exitoso.\",\n  \"user\": {\n    \"id\": 1,\n    \"nombre\": \"Cliente Ejemplo\",\n    \"correo\": \"cliente@ejemplo.com\",\n    \"rol\": \"cliente\",\n    \"estatus_organizador\": \"ninguno\"\n  }\n}"
+            },
+            {
+              "name": "401 Unauthorized - Credenciales incorrectas",
+              "originalRequest": {},
+              "status": "Unauthorized",
+              "code": 401,
+              "body": "{\n  \"message\": \"Las credenciales proporcionadas son incorrectas.\"\n}"
+            },
+            {
+              "name": "403 Forbidden - Cuenta no verificada",
+              "originalRequest": {},
+              "status": "Forbidden",
+              "code": 403,
+              "body": "{\n  \"message\": \"Account not verified. Please check your email for the verification code.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verificar Código (OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-XSRF-TOKEN", "value": "{{xsrf_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"{{correo}}\",\n  \"codigo\": \"123456\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/verificar-codigo", "host": ["{{base_url}}"], "path": ["api", "verificar-codigo"] },
+            "description": "Código de 6 dígitos enviado por correo al registrarse (válido 10 minutos). Verificación exitosa inicia sesión automáticamente."
+          },
+          "response": [
+            {
+              "name": "200 OK - Verificación exitosa",
+              "originalRequest": {},
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"message\": \"Verificación exitosa.\",\n  \"user\": { \"id\": 1, \"correo\": \"cliente@ejemplo.com\" }\n}"
+            },
+            {
+              "name": "422 Unprocessable Entity - Código incorrecto o expirado",
+              "originalRequest": {},
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "body": "{\n  \"message\": \"El código ingresado es incorrecto.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-XSRF-TOKEN", "value": "{{xsrf_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/logout", "host": ["{{base_url}}"], "path": ["api", "logout"] },
+            "description": "Requiere sesión activa (auth:sanctum). Invalida la sesión y regenera el token CSRF."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {},
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"message\": \"Sesión cerrada correctamente.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Venues (Teatros)",
+      "item": [
+        {
+          "name": "Listar Teatros del Organizador",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/organizador/teatros", "host": ["{{base_url}}"], "path": ["api", "organizador", "teatros"] },
+            "description": "Requiere auth:sanctum + middleware 'organizador' (rol organizador aprobado, o admin). Devuelve solo los recintos del organizador autenticado."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {},
+              "status": "OK",
+              "code": 200,
+              "body": "[\n  {\n    \"id\": 1,\n    \"nombre\": \"Teatro Gran Recinto\",\n    \"ubicacion\": \"Av. Benito Juárez 123, Centro\",\n    \"capacidad_total\": 500,\n    \"filas_totales\": 15,\n    \"asientos_por_fila\": 20,\n    \"pasillos_slots\": [5, 15],\n    \"posicion_escenario\": \"arriba\"\n  }\n]"
+            },
+            {
+              "name": "403 Forbidden - No es organizador aprobado",
+              "originalRequest": {},
+              "status": "Forbidden",
+              "code": 403,
+              "body": "{\n  \"message\": \"Acceso denegado. Se requiere una cuenta de organizador aprobada.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Crear Teatro",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-XSRF-TOKEN", "value": "{{xsrf_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Arena Central\",\n  \"ubicacion\": \"Calle Reforma 456\",\n  \"capacidad_total\": 600,\n  \"filas_totales\": 15,\n  \"asientos_por_fila\": 20,\n  \"pasillos_slots\": [5, 15],\n  \"posicion_escenario\": \"arriba\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/organizador/teatros", "host": ["{{base_url}}"], "path": ["api", "organizador", "teatros"] },
+            "description": "'nombre' solo admite letras y espacios (sin números). filas_totales * asientos_por_fila no puede superar capacidad_total. Genera automáticamente la matriz física de asientos (SeatGeneratorService)."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {},
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"id\": 2,\n  \"nombre\": \"Arena Central\",\n  \"ubicacion\": \"Calle Reforma 456\",\n  \"capacidad_total\": 600\n}"
+            },
+            {
+              "name": "422 Unprocessable Entity - Aforo excedido",
+              "originalRequest": {},
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "body": "{\n  \"message\": \"La cantidad de sillas en la matriz (filas x asientos) no puede exceder el aforo máximo del recinto.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Events (Eventos)",
+      "item": [
+        {
+          "name": "Listar Eventos Activos (público)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/eventos", "host": ["{{base_url}}"], "path": ["api", "eventos"] },
+            "description": "Endpoint público, sin autenticación. Incluye precio_desde (mínimo de boletos_evento por evento) y teatro_ubicacion para el buscador del Home."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {},
+              "status": "OK",
+              "code": 200,
+              "body": "[\n  {\n    \"id\": 1,\n    \"titulo\": \"Concierto Sinfónico\",\n    \"categoria\": \"Concierto\",\n    \"fecha_hora\": \"2026-09-15 20:00:00\",\n    \"estatus\": \"activo\",\n    \"teatro_nombre\": \"Teatro Gran Recinto\",\n    \"teatro_ubicacion\": \"Av. Benito Juárez 123, Centro\",\n    \"precio_desde\": 350.00\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "Crear Evento",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-XSRF-TOKEN", "value": "{{xsrf_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teatro_id\": {{teatro_id}},\n  \"titulo\": \"Concierto de Prueba\",\n  \"descripcion\": \"Descripción del evento.\",\n  \"categoria\": \"Concierto\",\n  \"fecha_hora\": \"2026-12-01 20:00:00\",\n  \"comision_fija_empresa\": 25.00,\n  \"estatus\": \"activo\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/organizador/eventos", "host": ["{{base_url}}"], "path": ["api", "organizador", "eventos"] },
+            "description": "Requiere estatus_organizador='aprobado' (o rol admin). fecha_hora debe ser futura. 'imagen' (multipart/form-data) es opcional como alternativa a imagen_url."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {},
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"id\": 5,\n  \"titulo\": \"Concierto de Prueba\",\n  \"estatus\": \"activo\"\n}"
+            },
+            {
+              "name": "403 Forbidden - Organizador no aprobado",
+              "originalRequest": {},
+              "status": "Forbidden",
+              "code": 403,
+              "body": "{\n  \"message\": \"Tu cuenta de organizador no ha sido aprobada por un administrador.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Seat Map (Mapa de Asientos)",
+      "item": [
+        {
+          "name": "Obtener Mapa Interactivo del Evento",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/eventos/{{evento_id}}/mapa",
+              "host": ["{{base_url}}"],
+              "path": ["api", "eventos", "{{evento_id}}", "mapa"]
+            },
+            "description": "Endpoint público. Devuelve la matriz completa de asientos (incluyendo slots de pasillo marcados con es_pasillo=true), zonas con tarifas, y estatus en tiempo real de cada asiento (disponible/reservado/vendido/pasillo). 'teatro.pasillos' y 'teatro.total_columnas' exponen la geometría del recinto para que el frontend dibuje los huecos de pasillo en su posición exacta."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {},
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"evento\": { \"id\": 1, \"titulo\": \"Concierto Sinfónico\" },\n  \"teatro\": {\n    \"id\": 1,\n    \"filas_totales\": 15,\n    \"asientos_por_fila\": 20,\n    \"pasillos\": [5, 15],\n    \"total_columnas\": 22\n  },\n  \"zonas\": [\n    { \"id\": 1, \"nombre_zona\": \"VIP\", \"precio_base\": 850.00, \"capacidad_asientos\": 100 }\n  ],\n  \"asientos\": [\n    { \"id\": 101, \"fila\": \"A\", \"numero\": 1, \"slot_index\": 1, \"es_pasillo\": false, \"estatus\": \"disponible\", \"precio_base\": 850.00 },\n    { \"id\": 102, \"fila\": \"A\", \"numero\": -5, \"slot_index\": 5, \"es_pasillo\": true, \"estatus\": \"pasillo\", \"precio_base\": 0 }\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found - Evento inactivo o inexistente",
+              "originalRequest": {},
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"message\": \"El evento no se encuentra activo o no existe.\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
