@@ -33,17 +33,29 @@
         ]"
       >
         📋 Solicitudes de Organizador
-        <span 
-          v-if="solicitudes.length > 0" 
+        <span
+          v-if="solicitudes.length > 0"
           class="px-2 py-0.5 text-xs bg-amber-500 text-white font-black rounded-full animate-pulse"
         >
           {{ solicitudes.length }}
         </span>
       </button>
+      <button
+        @click="pestañaActiva = 'logs'"
+        :class="[
+          'px-4 py-2 text-sm font-bold rounded-xl transition-all flex items-center gap-2',
+          pestañaActiva === 'logs' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        ]"
+      >
+        🛡️ Auditoría
+      </button>
     </div>
 
-    <!-- BARRA DE BÚSQUEDA Y FILTROS (ESTILO HOME) -->
-    <section class="max-w-xl mx-auto my-2">
+    <!-- BARRA DE BÚSQUEDA Y FILTROS (ESTILO HOME) — la pestaña de Auditoría
+         trae su propia barra de búsqueda/filtro (AdminLogs.vue), así que esta
+         se oculta ahí para no duplicar UI ni mezclar el ref `busqueda`
+         compartido con la búsqueda de correos de la bitácora. -->
+    <section v-if="pestañaActiva !== 'logs'" class="max-w-xl mx-auto my-2">
       <div class="flex items-center bg-white p-1.5 pl-4 rounded-full border border-gray-200 shadow-sm focus-within:ring-2 focus-within:ring-indigo-600 focus-within:border-transparent transition-all">
         <!-- Icono de Lupa -->
         <span class="text-gray-400 mr-2 text-base select-none">🔍</span>
@@ -201,7 +213,7 @@
     </div>
 
     <!-- PESTAÑA 2: TABLA DE SOLICITUDES DE ORGANIZADOR -->
-    <div v-else>
+    <div v-else-if="pestañaActiva === 'solicitudes'">
       <div v-if="cargandoSolicitudes" class="text-center py-12 text-gray-500 font-medium">
         Cargando solicitudes de organizador...
       </div>
@@ -294,6 +306,11 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- PESTAÑA 3: BITÁCORA DE AUDITORÍA -->
+    <div v-else-if="pestañaActiva === 'logs'">
+      <AdminLogs />
     </div>
 
     <!-- ========================================== -->
@@ -482,9 +499,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { axios } from '../composables/useAuth';
+import AdminLogs from '../Components/AdminLogs.vue';
 
 // Estado General
-const pestañaActiva = ref('usuarios'); // 'usuarios' | 'solicitudes'
+const pestañaActiva = ref('usuarios'); // 'usuarios' | 'solicitudes' | 'logs'
 const usuarios = ref([]);
 const solicitudes = ref([]);
 const cargando = ref(true);
