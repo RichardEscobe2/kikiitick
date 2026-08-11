@@ -32,14 +32,6 @@ class ConfirmacionCompraMail extends Mailable
     {
         $primerDetalle = $this->venta->detalles->first();
         $evento = $primerDetalle?->boletoEvento?->evento;
-
-        // 🛡️ QR embebido como data URI (base64), no como adjunto CID: más simple
-        // de generar dentro del Mailable sin manipular el mensaje Symfony
-        // subyacente, y con soporte amplio en clientes de correo modernos
-        // (verificado en Mailpit para esta tarea). Codifica exactamente
-        // `token_qr` — el mismo valor que ya usa el QR del lado cliente en
-        // ConfirmacionCompra.vue/MisBoletos.vue — nunca `hash_seguridad`
-        // (ese campo nunca sale del servidor, ver CompraService::emitirAccesos()).
         $accesosConQr = $this->venta->accesos->map(fn ($acceso) => [
             'acceso'  => $acceso,
             'qr_data_uri' => $this->generarQrDataUri($acceso->token_qr),
@@ -57,12 +49,6 @@ class ConfirmacionCompraMail extends Mailable
         );
     }
 
-    /**
-     * Genera el QR de un boleto como data URI PNG (sin escribir a disco ni
-     * depender de un endpoint público) — requiere ext-gd, agregada al
-     * Dockerfile específicamente para esta función (antes no había ningún uso
-     * server-side de generación de imágenes en el proyecto).
-     */
     private function generarQrDataUri(string $token): string
     {
         $qrCode = new QrCode(
@@ -76,19 +62,6 @@ class ConfirmacionCompraMail extends Mailable
         return (new PngWriter())->write($qrCode)->getDataUri();
     }
 
-    /**
-     * 🐛 Encontrado en esta iteración: FRONTEND_URL en .env vivía sin esquema
-     * ("dominio.com" en vez de "https://dominio.com"). El Blade anterior hacía
-     * config('app.frontend_url') + concatenación directa, produciendo un
-     * <a href="dominio.com/confirmacion/1"> — SIN esquema, un navegador lo
-     * trata como URL relativa al origen actual (por eso se rompía dentro del
-     * iframe de Mailpit). Se corrigió el valor real en .env, pero esta guarda
-     * queda aquí para que una futura mala configuración degrade a un enlace
-     * absoluto igual, en vez de repetir el mismo bug silenciosamente. Misma
-     * variable de entorno, mismo riesgo, corregido también en
-     * MercadoPagoService::crearPreferencia() (back_urls reales hacia Mercado
-     * Pago tenían exactamente este mismo problema).
-     */
     private function urlConfirmacion(): string
     {
         $frontendUrl = trim((string) config('app.frontend_url'));
