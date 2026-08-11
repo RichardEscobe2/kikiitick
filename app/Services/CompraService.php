@@ -223,12 +223,69 @@ class CompraService
             AsientoEvento::where('venta_id', $ventaBloqueada->id)
                 ->update(['estado' => 'vendido', 'reservado_hasta' => null]);
 
+            // 🛡️ Único punto del flujo online donde se descuenta stock_disponible:
+            // procesarCompra() ya NO lo hace al crear la Venta 'pendiente' (antes se
+            // descontaba ahí, y como ninguna reconciliación restauraba el stock de los
+            // checkouts abandonados/expirados, cada intento fallido dejaba el contador
+            // permanentemente negativo). Al descontar solo aquí, en la transición real
+            // a 'pagado' — protegida por el guard de arriba y por lockForUpdate(), y por
+            // tanto imposible de ejecutar dos veces para la misma Venta — el stock queda
+            // atado 1:1 a ventas efectivamente cobradas.
+            foreach ($ventaBloqueada->detalles as $detalle) {
+                BoletoEvento::where('id', $detalle->boleto_evento_id)
+                    ->decrement('stock_disponible', $detalle->cantidad);
+            }
+
             // metodo_pago ya quedó fijado en procesarCompra() ('tarjeta'/'oxxo', la
             // intención real del comprador) — no se sobreescribe aquí para no perder esa
             // distinción de cara a "Mis Boletos"/reportes.
             $ventaBloqueada->update([
                 'estatus_pago' => 'pagado',
             ]);
+
+            return true;
+        }, attempts: 3);
+    }
+
+    /**
+     * Cancela una Venta 'pendiente' abandonada (llamado desde
+     * kikiitick:cancelar-ventas-pendientes-expiradas): libera los asientos que
+     * seguían reservados a su nombre, revoca sus accesos y la marca 'cancelado'.
+     *
+     * No toca stock_disponible: desde el fix de confirmarPagoAprobado(), una Venta
+     * 'pendiente' nunca lo decrementó, así que no hay nada que restaurar aquí.
+     *
+     * Idempotente y defensivo igual que confirmarPagoAprobado(): si la Venta ya
+     * dejó de estar 'pendiente' (el webhook la confirmó justo antes de este lock,
+     * o una corrida anterior ya la canceló), no hace nada.
+     *
+     * @return bool true si esta llamada fue la que efectivamente canceló la Venta.
+     */
+    public function cancelarVentaPendiente(Venta $venta): bool
+    {
+        return DB::transaction(function () use ($venta) {
+            $ventaBloqueada = Venta::where('id', $venta->id)->lockForUpdate()->first();
+
+            if (!$ventaBloqueada || $ventaBloqueada->estatus_pago !== 'pendiente') {
+                return false;
+            }
+
+            $ventaBloqueada->update(['estatus_pago' => 'cancelado']);
+
+            Acceso::where('venta_id', $ventaBloqueada->id)->update(['estatus' => 'revocado']);
+
+            // Solo libera asientos que SIGUEN 'reservado' a nombre de esta Venta — si
+            // alguno ya expiró por RN-05 y otro usuario lo re-reservó antes de este
+            // cancelado, ese asiento ya no le pertenece a esta venta_id y este UPDATE
+            // no lo toca.
+            AsientoEvento::where('venta_id', $ventaBloqueada->id)
+                ->where('estado', 'reservado')
+                ->update([
+                    'estado'                   => 'disponible',
+                    'reservado_por_usuario_id' => null,
+                    'reservado_hasta'          => null,
+                    'venta_id'                 => null,
+                ]);
 
             return true;
         }, attempts: 3);
@@ -269,6 +326,14 @@ class CompraService
 
             [$montoNetoTotal, $detallesParaCrear, $boletosPorZona, $asientosPorZona] =
                 $this->calcularDetalleCompra($eventoId, $asientoIds);
+
+            // 🛡️ Venta de taquilla queda 'pagado' de inmediato (no pasa por
+            // confirmarPagoAprobado()), así que el stock se descuenta aquí mismo — a
+            // diferencia de procesarCompra(), que ya NO descuenta stock al crear la
+            // Venta 'pendiente' (ver comentario en confirmarPagoAprobado()).
+            foreach ($asientosPorZona as $zonaId => $asientosGrupo) {
+                $boletosPorZona[$zonaId]->decrement('stock_disponible', $asientosGrupo->count());
+            }
 
             $comisionPorBoleto = (float) $evento->comision_fija_empresa;
             $totalComisiones = count($asientoIds) * $comisionPorBoleto;
@@ -351,9 +416,6 @@ class CompraService
 
             $subtotalZona = $boletoEvento->precio_base * $cantidad;
             $montoNetoTotal += $subtotalZona;
-
-            // Reducir stock disponible en la zona
-            $boletoEvento->decrement('stock_disponible', $cantidad);
 
             $detallesParaCrear[] = [
                 'boleto_evento_id' => $boletoEvento->id,
