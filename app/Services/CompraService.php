@@ -14,6 +14,7 @@ use App\Models\Venta;
 use App\Models\ZonaTeatro;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class CompraService
@@ -44,16 +45,9 @@ class CompraService
             throw new CompraException('Este evento no está disponible para reservas en este momento.');
         }
 
-        DB::transaction(function () use ($usuario, $eventoId, $asientoIds) {
+        $expiraEn = DB::transaction(function () use ($usuario, $eventoId, $asientoIds) {
             // 1. Limpiar reservas expiradas de este evento antes de validar
-            AsientoEvento::where('evento_id', $eventoId)
-                ->where('estado', 'reservado')
-                ->where('reservado_hasta', '<', Carbon::now())
-                ->update([
-                    'estado'                   => 'disponible',
-                    'reservado_por_usuario_id' => null,
-                    'reservado_hasta'          => null,
-                ]);
+            $this->liberarReservasExpiradas($eventoId);
 
             // 2. Verificar si algún asiento ya está ocupado o reservado por OTRO usuario no expirado
             $ocupados = AsientoEvento::where('evento_id', $eventoId)
@@ -94,13 +88,64 @@ class CompraService
                 ['evento_id', 'asiento_id'],
                 ['estado', 'reservado_por_usuario_id', 'reservado_hasta', 'updated_at']
             );
+
+            // 🛡️ Devuelto por la transacción (en vez de recalcular Carbon::now() otra
+            // vez fuera de ella, como hacía antes el 'expira_en' del return de abajo):
+            // así el log de auditoría y la respuesta al frontend reportan EXACTAMENTE
+            // el mismo instante que quedó realmente escrito en reservado_hasta.
+            return $expiraEn;
         }, attempts: 3);
+
+        Log::channel('auditoria')->info('AUDITORIA_RESERVA: Asientos bloqueados temporalmente', [
+            'usuario_id'  => $usuario->id,
+            'evento_id'   => $eventoId,
+            'asiento_ids' => $asientoIds,
+            'expira_en'   => $expiraEn->toIso8601String(),
+        ]);
 
         return [
             'message'           => 'Asientos reservados temporalmente por ' . self::MINUTOS_RESERVA . ' minutos.',
-            'expira_en'         => Carbon::now()->addMinutes(self::MINUTOS_RESERVA)->toIso8601String(),
+            'expira_en'         => $expiraEn->toIso8601String(),
             'tiempo_limite_seg' => self::MINUTOS_RESERVA * 60,
         ];
+    }
+
+    /**
+     * Libera las reservas ('reservado') de este evento cuyo reservado_hasta ya
+     * pasó — llamado al inicio de reservarAsientos() y comprarEnTaquilla() antes
+     * de validar disponibilidad (antes vivía duplicado en ambos métodos). $ahora
+     * se calcula UNA sola vez y se reutiliza en el pluck() y el update() para que
+     * ambas consultas vean exactamente el mismo corte de tiempo — evita que un
+     * asiento "cambie de opinión" entre contar cuáles liberar y liberarlos de
+     * verdad si la ejecución cruza el límite de un minuto entre ambas queries.
+     */
+    private function liberarReservasExpiradas(int $eventoId): void
+    {
+        $ahora = Carbon::now();
+
+        $idsLiberados = AsientoEvento::where('evento_id', $eventoId)
+            ->where('estado', 'reservado')
+            ->where('reservado_hasta', '<', $ahora)
+            ->pluck('asiento_id');
+
+        if ($idsLiberados->isEmpty()) {
+            return;
+        }
+
+        AsientoEvento::where('evento_id', $eventoId)
+            ->where('estado', 'reservado')
+            ->where('reservado_hasta', '<', $ahora)
+            ->update([
+                'estado'                   => 'disponible',
+                'reservado_por_usuario_id' => null,
+                'reservado_hasta'          => null,
+            ]);
+
+        Log::channel('auditoria')->info('AUDITORIA_RESERVA_EXPIRADA: Liberación de asientos', [
+            'evento_id'   => $eventoId,
+            'asiento_ids' => $idsLiberados->all(),
+            'cantidad'    => $idsLiberados->count(),
+        ]);
     }
 
     /**
@@ -243,6 +288,19 @@ class CompraService
                 'estatus_pago' => 'pagado',
             ]);
 
+            // 🛡️ Único lugar del código donde una Venta online pasa a 'pagado' —
+            // protegido por el guard de arriba (idempotente) y lockForUpdate(), así
+            // que este log corre exactamente una vez por Venta sin importar cuál de
+            // las 3 rutas la confirme (webhook real, simular-pago de pruebas, o la
+            // reconciliación al volver del checkout / el comando programado).
+            Log::channel('auditoria')->info('AUDITORIA_VENTA_WEB: Venta exitosa', [
+                'venta_id'          => $ventaBloqueada->id,
+                'usuario_id'        => $ventaBloqueada->usuario_id,
+                'evento_id'         => $ventaBloqueada->detalles->first()?->boletoEvento?->evento_id,
+                'monto_total'       => (float) $ventaBloqueada->monto_total,
+                'cantidad_asientos' => $ventaBloqueada->detalles->sum('cantidad'),
+            ]);
+
             return true;
         }, attempts: 3);
     }
@@ -309,10 +367,7 @@ class CompraService
 
             // Libera reservas online expiradas antes de validar disponibilidad, igual
             // que en reservarAsientos().
-            AsientoEvento::where('evento_id', $eventoId)
-                ->where('estado', 'reservado')
-                ->where('reservado_hasta', '<', Carbon::now())
-                ->update(['estado' => 'disponible', 'reservado_por_usuario_id' => null, 'reservado_hasta' => null]);
+            $this->liberarReservasExpiradas($eventoId);
 
             $ocupados = AsientoEvento::where('evento_id', $eventoId)
                 ->whereIn('asiento_id', $asientoIds)

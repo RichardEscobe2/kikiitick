@@ -152,9 +152,9 @@ class PerfilYAuditoriaTest extends TestCase
         $this->archivosLogTemporales[] = $archivo;
 
         file_put_contents($archivo, implode("\n", [
-            '[2026-08-11 10:00:00] local.WARNING: Intento de login fallido {"correo_intentado":"' . $correoUnico . '","ip":"10.0.0.1"} ',
-            '[2026-08-11 10:00:05] local.INFO: Login exitoso {"usuario_id":999,"correo":"' . $correoUnico . '","ip":"10.0.0.1"} ',
-            '[2026-08-11 10:05:00] local.INFO: Logout {"usuario_id":999,"correo":"' . $correoUnico . '","ip":"10.0.0.1"} ',
+            '[2026-08-11 10:00:00] local.WARNING: AUDITORIA_AUTH_LOGIN: Intento de login fallido {"correo_intentado":"' . $correoUnico . '","ip":"10.0.0.1"} ',
+            '[2026-08-11 10:00:05] local.INFO: AUDITORIA_AUTH_LOGIN: Login exitoso {"usuario_id":999,"correo":"' . $correoUnico . '","ip":"10.0.0.1"} ',
+            '[2026-08-11 10:05:00] local.INFO: AUDITORIA_AUTH_LOGOUT: Logout {"usuario_id":999,"correo":"' . $correoUnico . '","ip":"10.0.0.1"} ',
         ]) . "\n");
 
         $response = $this->actingAs($admin)->getJson('/api/admin/logs/auditoria');
@@ -163,8 +163,66 @@ class PerfilYAuditoriaTest extends TestCase
         $entradas = collect($response->json())->where('correo', $correoUnico);
 
         $this->assertCount(3, $entradas);
-        $this->assertTrue($entradas->contains(fn ($e) => $e['event_type'] === 'login_fallido'));
-        $this->assertTrue($entradas->contains(fn ($e) => $e['event_type'] === 'login_exitoso' && $e['usuario_id'] === 999));
-        $this->assertTrue($entradas->contains(fn ($e) => $e['event_type'] === 'logout'));
+        // Los 3 caen en la misma categoría 'autenticacion' (login fallido, login
+        // exitoso y logout comparten el mismo badge azul) — se distinguen entre
+        // sí por 'event_name', la descripción específica de cada uno.
+        $this->assertTrue($entradas->every(fn ($e) => $e['category'] === 'autenticacion'));
+        $this->assertTrue($entradas->contains(fn ($e) => $e['event_name'] === 'Intento de login fallido'));
+        $this->assertTrue($entradas->contains(fn ($e) => $e['event_name'] === 'Login exitoso' && $e['usuario_id'] === 999));
+        $this->assertTrue($entradas->contains(fn ($e) => $e['event_name'] === 'Logout'));
+    }
+
+    public function test_admin_ve_el_correo_resuelto_por_bd_cuando_el_log_solo_trae_usuario_id(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $cliente = User::factory()->create();
+
+        // AUDITORIA_RESERVA/AUDITORIA_VENTA_WEB nunca guardan el correo en el
+        // contexto, solo el usuario_id — el endpoint debe resolverlo por su
+        // cuenta contra la BD en vez de mostrar "Desconocido" aunque el usuario
+        // sí sea identificable.
+        $archivo = storage_path('logs/auditoria-test-' . uniqid() . '.log');
+        $this->archivosLogTemporales[] = $archivo;
+
+        file_put_contents(
+            $archivo,
+            '[2026-08-11 10:10:00] local.INFO: AUDITORIA_RESERVA: Asientos bloqueados temporalmente {"usuario_id":' . $cliente->id . ',"evento_id":4,"asiento_ids":[1,2],"expira_en":"2026-08-11T10:15:00+00:00"} ' . "\n"
+        );
+
+        $response = $this->actingAs($admin)->getJson('/api/admin/logs/auditoria');
+        $response->assertStatus(200);
+
+        $entrada = collect($response->json())->firstWhere('usuario_id', $cliente->id);
+
+        $this->assertNotNull($entrada);
+        $this->assertSame('apartado_boleto', $entrada['category']);
+        $this->assertSame('Asientos bloqueados temporalmente', $entrada['event_name']);
+        $this->assertSame($cliente->correo, $entrada['correo']);
+    }
+
+    public function test_admin_ve_la_categoria_correcta_para_venta_pos_con_campos_de_contexto_distintos(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $vendedor = User::factory()->create(['rol' => 'vendedor']);
+
+        // AUDITORIA_VENTA_POS usa 'vendedor_usuario_id' y 'cliente_email' — no
+        // 'usuario_id'/'correo' — el endpoint debe reconocer estas claves
+        // alternativas en vez de mostrar "Desconocido"/"Otro".
+        $archivo = storage_path('logs/auditoria-test-' . uniqid() . '.log');
+        $this->archivosLogTemporales[] = $archivo;
+
+        file_put_contents(
+            $archivo,
+            '[2026-08-11 10:20:00] local.INFO: AUDITORIA_VENTA_POS: Venta en taquilla realizada {"venta_id":1,"vendedor_usuario_id":' . $vendedor->id . ',"cliente_email":"comprador.mostrador@ejemplo.com","metodo_pago":"efectivo","monto_total":300.0,"asiento_ids":[1]} ' . "\n"
+        );
+
+        $response = $this->actingAs($admin)->getJson('/api/admin/logs/auditoria');
+        $response->assertStatus(200);
+
+        $entrada = collect($response->json())->firstWhere('correo', 'comprador.mostrador@ejemplo.com');
+
+        $this->assertNotNull($entrada);
+        $this->assertSame('compra_boleto', $entrada['category']);
+        $this->assertSame($vendedor->id, $entrada['usuario_id']);
     }
 }
