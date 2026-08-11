@@ -160,4 +160,63 @@ class AdminController extends Controller
             'usuario' => $usuario
         ]);
     }
+
+    /**
+     * GET /api/admin/logs/auditoria — lee y parsea el canal 'auditoria'
+     * (config/logging.php, driver 'daily') para el visor de auditoría del
+     * panel de admin. Nunca se re-escribe el archivo, solo lectura.
+     *
+     * Formato de cada línea (Monolog LineFormatter estándar de Laravel):
+     * "[2026-08-11 14:30:45] local.INFO: Login exitoso {"usuario_id":52,...}"
+     */
+    public function getLogsAuditoria(Request $request)
+    {
+        $archivos = glob(storage_path('logs/auditoria-*.log')) ?: [];
+        // El driver 'daily' también puede dejar un 'auditoria.log' sin fecha
+        // en instalaciones muy nuevas (primer día antes de rotar) — se incluye
+        // también por si acaso.
+        $archivoBase = storage_path('logs/auditoria.log');
+        if (file_exists($archivoBase)) {
+            $archivos[] = $archivoBase;
+        }
+
+        $patron = '/^\[(?<timestamp>[\d\-]+ [\d:]+)\]\s+\S+\.(?<level>\w+):\s+(?<mensaje>.+?)\s+(?<contexto>\{.*\})\s*$/';
+
+        $mapaTipoEvento = [
+            'Login exitoso'                              => 'login_exitoso',
+            'Intento de login fallido'                    => 'login_fallido',
+            'Intento de login con cuenta no verificada'    => 'login_fallido',
+            'Logout'                                       => 'logout',
+        ];
+
+        $entradas = [];
+
+        foreach ($archivos as $archivo) {
+            $lineas = @file($archivo, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+
+            foreach ($lineas as $linea) {
+                if (!preg_match($patron, $linea, $m)) {
+                    continue; // línea de continuación de una traza previa, etc. — se ignora
+                }
+
+                $contexto = json_decode($m['contexto'], true) ?? [];
+
+                $entradas[] = [
+                    'timestamp'  => $m['timestamp'],
+                    'event_type' => $mapaTipoEvento[$m['mensaje']] ?? 'otro',
+                    'mensaje'    => $m['mensaje'],
+                    'usuario_id' => $contexto['usuario_id'] ?? null,
+                    'correo'     => $contexto['correo'] ?? $contexto['correo_intentado'] ?? null,
+                    'ip'         => $contexto['ip'] ?? null,
+                ];
+            }
+        }
+
+        // Más reciente primero.
+        usort($entradas, fn ($a, $b) => strcmp($b['timestamp'], $a['timestamp']));
+
+        // Límite razonable de payload — el visor no necesita el historial
+        // completo de meses, solo actividad reciente para auditar accesos.
+        return response()->json(array_slice($entradas, 0, 500));
+    }
 }

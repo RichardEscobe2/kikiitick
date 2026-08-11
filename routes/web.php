@@ -9,6 +9,7 @@ use App\Http\Controllers\TeatroController;
 use App\Http\Controllers\EventoController; // <--- Controlador de Eventos
 use App\Http\Controllers\CompraController;
 use App\Http\Controllers\TaquillaController;
+use App\Http\Controllers\UserController;
 
 // 1. RUTAS DE LA API
 Route::prefix('api')->group(function () {
@@ -89,6 +90,9 @@ Route::prefix('api')->group(function () {
         Route::get('/solicitudes-organizador', [AdminController::class, 'getSolicitudesOrganizador']);
         Route::put('/organizador/{id}/aprobar', [AdminController::class, 'aprobarOrganizador']);
         Route::put('/organizador/{id}/rechazar', [AdminController::class, 'rechazarOrganizador']);
+
+        // Visor de auditoría (solo lectura del canal 'auditoria')
+        Route::get('/logs/auditoria', [AdminController::class, 'getLogsAuditoria']);
     });
 
     // 🔑 RUTAS AUTENTICADAS CON SANCTUM (cualquier usuario autenticado, sin restricción de rol)
@@ -102,6 +106,12 @@ Route::prefix('api')->group(function () {
         });
 
         Route::post('/logout', [AuthController::class, 'logout']);
+
+        // 🆕 Autoservicio de perfil: PATCH porque es una actualización PARCIAL
+        // (nombre/teléfono/RFC) — nunca reemplaza el recurso completo (no toca
+        // correo, contraseña ni rol). Cualquier rol autenticado puede editar
+        // SU PROPIO perfil.
+        Route::patch('/user/perfil', [UserController::class, 'actualizarPerfil']);
 
         // 🆕 Auto-servicio: un 'cliente' ya autenticado pide convertirse en
         // organizador (a diferencia de /registro-organizador, que es para
