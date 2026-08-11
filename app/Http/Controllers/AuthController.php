@@ -138,7 +138,7 @@ class AuthController extends Controller
         if (!$usuario || !Hash::check($request->contrasena, $usuario->contrasena)) {
             // 🛡️ Auditoría: nunca se registra la contraseña recibida, solo el correo
             // intentado — suficiente para detectar fuerza bruta sin guardar secretos.
-            Log::channel('auditoria')->warning('Intento de login fallido', [
+            Log::channel('auditoria')->warning('AUDITORIA_AUTH_LOGIN: Intento de login fallido', [
                 'correo_intentado' => $request->correo,
                 'ip'               => $request->ip(),
             ]);
@@ -150,7 +150,7 @@ class AuthController extends Controller
 
         // 🛡️ Bloquea el login si la cuenta no ha completado la verificación por OTP/correo.
         if (!$usuario->correo_verificado_at) {
-            Log::channel('auditoria')->warning('Intento de login con cuenta no verificada', [
+            Log::channel('auditoria')->warning('AUDITORIA_AUTH_LOGIN: Intento de login con cuenta no verificada', [
                 'usuario_id' => $usuario->id,
                 'correo'     => $usuario->correo,
                 'ip'         => $request->ip(),
@@ -164,7 +164,7 @@ class AuthController extends Controller
         Auth::login($usuario);
         $request->session()->regenerate();
 
-        Log::channel('auditoria')->info('Login exitoso', [
+        Log::channel('auditoria')->info('AUDITORIA_AUTH_LOGIN: Login exitoso', [
             'usuario_id' => $usuario->id,
             'correo'     => $usuario->correo,
             'ip'         => $request->ip(),
@@ -244,7 +244,7 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        Log::channel('auditoria')->info('Logout', [
+        Log::channel('auditoria')->info('AUDITORIA_AUTH_LOGOUT: Logout', [
             'usuario_id' => $usuario?->id,
             'correo'     => $usuario?->correo,
             'ip'         => $request->ip(),

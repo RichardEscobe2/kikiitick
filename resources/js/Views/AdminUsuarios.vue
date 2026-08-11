@@ -183,11 +183,24 @@
                       🔑 Clave
                     </button>
 
-                    <!-- Botón Eliminar -->
-                    <button 
-                      @click="eliminarUsuario(usuario.id, usuario.correo)" 
-                      class="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                    <!-- Botón Eliminar — deshabilitado (no oculto, para que quede
+                         claro que la protección es intencional, no un bug) sobre
+                         cuentas admin o la propia cuenta del admin autenticado. -->
+                    <button
+                      v-if="usuario.rol !== 'admin' && usuario.id !== usuarioActual?.id"
+                      @click="eliminarUsuario(usuario.id, usuario.correo)"
+                      class="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                       title="Borrado lógico"
+                    >
+                      🗑️ Borrar
+                    </button>
+                    <button
+                      v-else
+                      disabled
+                      class="px-3 py-1.5 bg-gray-100 text-gray-400 rounded-lg text-xs font-bold cursor-not-allowed flex items-center gap-1"
+                      :title="usuario.id === usuarioActual?.id
+                        ? 'No puedes eliminar tu propia cuenta de administrador.'
+                        : 'Las cuentas de administrador son protegidas y no pueden ser eliminadas.'"
                     >
                       🗑️ Borrar
                     </button>
@@ -498,8 +511,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { axios } from '../composables/useAuth';
+import { axios, useAuth } from '../composables/useAuth';
 import AdminLogs from '../Components/AdminLogs.vue';
+
+const { user: usuarioActual } = useAuth();
 
 // Estado General
 const pestañaActiva = ref('usuarios'); // 'usuarios' | 'solicitudes' | 'logs'

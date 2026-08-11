@@ -43,9 +43,41 @@ class AdminController extends Controller
     }
 
     // Eliminar lógicamente a un usuario
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $usuario = User::findOrFail($id);
+        $solicitante = $request->user();
+
+        // 🛡️ OWASP A01 (Broken Access Control): un admin nunca debe poder
+        // auto-eliminarse (podría dejar la plataforma sin ningún admin activo)
+        // ni eliminar a otro admin (evita que una cuenta admin comprometida
+        // borre a las demás para cubrir sus huellas). Se revisa la
+        // auto-eliminación primero para dar un mensaje más específico que el
+        // genérico de "cuenta de admin protegida".
+        if ($solicitante->id === $usuario->id) {
+            Log::channel('auditoria')->warning('AUDITORIA_SEGURIDAD: Intento no autorizado de eliminación de cuenta admin', [
+                'attempted_by' => $solicitante->id,
+                'target_user'  => $usuario->id,
+                'motivo'       => 'auto_eliminacion',
+            ]);
+
+            return response()->json([
+                'message' => 'No puedes eliminar tu propia cuenta de administrador.'
+            ], 403);
+        }
+
+        if ($usuario->rol === 'admin') {
+            Log::channel('auditoria')->warning('AUDITORIA_SEGURIDAD: Intento no autorizado de eliminación de cuenta admin', [
+                'attempted_by' => $solicitante->id,
+                'target_user'  => $usuario->id,
+                'motivo'       => 'cuenta_admin_protegida',
+            ]);
+
+            return response()->json([
+                'message' => 'Las cuentas de administrador son protegidas y no pueden ser eliminadas.'
+            ], 403);
+        }
+
         $usuario->delete(); // Ejecuta Soft Delete automático debido al Trait
 
         return response()->json([
@@ -162,12 +194,52 @@ class AdminController extends Controller
     }
 
     /**
+     * Prefijos reales que el código emite hoy (grep de
+     * `Log::channel('auditoria')` en toda la app) mapeados a una categoría
+     * para el badge del visor. Ordenados de más a menos específico no hace
+     * falta: ningún prefijo real es substring de otro salvo a propósito
+     * (AUDITORIA_RESERVA / AUDITORIA_RESERVA_EXPIRADA, AUDITORIA_VENTA_WEB /
+     * AUDITORIA_VENTA_POS comparten categoría intencionalmente). Categorías
+     * como 'gestion_recinto'/'gestion_evento'/'cambio_password' están
+     * reconocidas aquí para cuando existan (forward-compatible), aunque
+     * ningún controlador las emite todavía — no es una promesa de que ya
+     * funcionen, solo que el visor no las mostrará como "Otro" el día que se
+     * agreguen.
+     */
+    private const CATEGORIAS_AUDITORIA = [
+        'AUDITORIA_AUTH_REGISTRO'         => ['autenticacion', 'Autenticación'],
+        'AUDITORIA_AUTH_LOGIN'            => ['autenticacion', 'Autenticación'],
+        'AUDITORIA_AUTH_LOGOUT'           => ['autenticacion', 'Autenticación'],
+        'AUDITORIA_AUTH_PASSWORD'         => ['cambio_password', 'Cambio Contraseña'],
+        'AUDITORIA_SOLICITUD_ORGANIZADOR' => ['solicitud_organizador', 'Solicitud Organizador'],
+        'AUDITORIA_RECINTO'               => ['gestion_recinto', 'Gestión Recinto'],
+        'AUDITORIA_EVENTO'                => ['gestion_evento', 'Gestión Evento'],
+        'AUDITORIA_RESERVA'               => ['apartado_boleto', 'Apartado Boleto'],
+        'AUDITORIA_VENTA'                 => ['compra_boleto', 'Compra Boleto'],
+        'AUDITORIA_SEGURIDAD'             => ['seguridad', 'Seguridad'],
+    ];
+
+    /**
+     * Mensajes de auditoría de login/logout emitidos ANTES de que
+     * AuthController empezara a usar el prefijo AUDITORIA_AUTH_LOGIN/LOGOUT —
+     * cualquier entrada real ya escrita en storage/logs/ con el texto viejo
+     * (sin prefijo) seguiría cayendo en 'otro' sin este mapa de compatibilidad,
+     * a pesar de ser un evento de autenticación genuino.
+     */
+    private const CATEGORIA_LEGADO = [
+        'Login exitoso'                             => ['autenticacion'],
+        'Intento de login fallido'                  => ['autenticacion'],
+        'Intento de login con cuenta no verificada' => ['autenticacion'],
+        'Logout'                                    => ['autenticacion'],
+    ];
+
+    /**
      * GET /api/admin/logs/auditoria — lee y parsea el canal 'auditoria'
      * (config/logging.php, driver 'daily') para el visor de auditoría del
      * panel de admin. Nunca se re-escribe el archivo, solo lectura.
      *
      * Formato de cada línea (Monolog LineFormatter estándar de Laravel):
-     * "[2026-08-11 14:30:45] local.INFO: Login exitoso {"usuario_id":52,...}"
+     * "[2026-08-11 14:30:45] local.INFO: AUDITORIA_VENTA_WEB: Venta exitosa {"usuario_id":52,...}"
      */
     public function getLogsAuditoria(Request $request)
     {
@@ -182,13 +254,6 @@ class AdminController extends Controller
 
         $patron = '/^\[(?<timestamp>[\d\-]+ [\d:]+)\]\s+\S+\.(?<level>\w+):\s+(?<mensaje>.+?)\s+(?<contexto>\{.*\})\s*$/';
 
-        $mapaTipoEvento = [
-            'Login exitoso'                              => 'login_exitoso',
-            'Intento de login fallido'                    => 'login_fallido',
-            'Intento de login con cuenta no verificada'    => 'login_fallido',
-            'Logout'                                       => 'logout',
-        ];
-
         $entradas = [];
 
         foreach ($archivos as $archivo) {
@@ -201,15 +266,65 @@ class AdminController extends Controller
 
                 $contexto = json_decode($m['contexto'], true) ?? [];
 
+                // Separa "AUDITORIA_XXX: Descripción legible" en tag + descripción.
+                // Si un mensaje algún día no trae ":", se trata todo como descripción
+                // y el tag queda vacío (cae en categoría 'otro' abajo).
+                [$tag, $descripcion] = array_pad(explode(': ', $m['mensaje'], 2), 2, $m['mensaje']);
+
+                $categoria = self::CATEGORIA_LEGADO[$m['mensaje']][0] ?? 'otro';
+                foreach (self::CATEGORIAS_AUDITORIA as $prefijo => [$catKey, $catLabel]) {
+                    if (str_starts_with($tag, $prefijo)) {
+                        $categoria = $catKey;
+                        break;
+                    }
+                }
+
+                // 🛡️ Cada tipo de evento nombra su usuario/correo con claves distintas
+                // según el contexto de negocio (quién vende vs. quién compra, quién
+                // intentó la acción vs. el objetivo) — antes solo se leía
+                // 'usuario_id'/'correo', así que AUDITORIA_VENTA_POS (vendedor_usuario_id
+                // + cliente_email) y AUDITORIA_SEGURIDAD (attempted_by) siempre
+                // mostraban "Desconocido" aunque el dato SÍ estaba en el contexto.
+                $usuarioId = $contexto['usuario_id']
+                    ?? $contexto['vendedor_usuario_id']
+                    ?? $contexto['attempted_by']
+                    ?? null;
+
+                $correo = $contexto['correo']
+                    ?? $contexto['correo_intentado']
+                    ?? $contexto['cliente_email']
+                    ?? null;
+
                 $entradas[] = [
-                    'timestamp'  => $m['timestamp'],
-                    'event_type' => $mapaTipoEvento[$m['mensaje']] ?? 'otro',
-                    'mensaje'    => $m['mensaje'],
-                    'usuario_id' => $contexto['usuario_id'] ?? null,
-                    'correo'     => $contexto['correo'] ?? $contexto['correo_intentado'] ?? null,
-                    'ip'         => $contexto['ip'] ?? null,
+                    'timestamp'   => $m['timestamp'],
+                    'category'    => $categoria,
+                    'event_name'  => $categoria === 'otro' ? $tag : trim($descripcion),
+                    'mensaje'     => $m['mensaje'],
+                    'usuario_id'  => $usuarioId,
+                    'correo'      => $correo,
+                    'ip'          => $contexto['ip'] ?? null,
                 ];
             }
+        }
+
+        // 🛡️ Resuelve el correo por lookup de BD cuando el contexto del log trae
+        // usuario_id pero no un correo directo (ej. AUDITORIA_RESERVA/VENTA_WEB
+        // nunca guardaron el correo, solo el id) — así el frontend nunca muestra
+        // "Desconocido" para una entrada que sí tiene un usuario identificable.
+        $idsSinCorreo = collect($entradas)
+            ->filter(fn ($e) => $e['usuario_id'] && !$e['correo'])
+            ->pluck('usuario_id')
+            ->unique();
+
+        if ($idsSinCorreo->isNotEmpty()) {
+            $correosPorId = User::whereIn('id', $idsSinCorreo)->pluck('correo', 'id');
+
+            foreach ($entradas as &$entrada) {
+                if ($entrada['usuario_id'] && !$entrada['correo']) {
+                    $entrada['correo'] = $correosPorId->get($entrada['usuario_id']);
+                }
+            }
+            unset($entrada);
         }
 
         // Más reciente primero.

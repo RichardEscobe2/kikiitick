@@ -481,6 +481,15 @@ class CompraController extends Controller
 
             $venta->load(['accesos', 'detalles.boletoEvento.zonaTeatro', 'detalles.boletoEvento.evento.teatro']);
 
+            Log::channel('auditoria')->info('AUDITORIA_VENTA_POS: Venta en taquilla realizada', [
+                'venta_id'           => $venta->id,
+                'vendedor_usuario_id' => $user->id,
+                'cliente_email'      => $validated['cliente_email'],
+                'metodo_pago'        => $venta->metodo_pago,
+                'monto_total'        => (float) $venta->monto_total,
+                'asiento_ids'        => $validated['asiento_ids'],
+            ]);
+
             // 📧 Envío SÍNCRONO (no encolado): la venta de taquilla ya nace 'pagado'
             // (RN-09) y el cliente está esperando en el mostrador — no puede depender
             // de que un worker de colas (`queue:work`) esté corriendo en ese momento,
