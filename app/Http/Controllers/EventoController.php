@@ -338,6 +338,14 @@ class EventoController extends Controller
                 'asientos_por_fila'  => $evento->teatro->asientos_por_fila,
                 'pasillos_slots'     => $evento->teatro->pasillos_slots,
                 'posicion_escenario' => $evento->teatro->posicion_escenario,
+                // 🆕 Metadata explícita de geometría para el frontend (Módulo 4):
+                // 'pasillos' es un alias de pasillos_slots con el nombre que espera
+                // el algoritmo de renderizado por columnas, y 'total_columnas' evita
+                // que el frontend tenga que recalcular asientos_por_fila +
+                // count(pasillos_slots) por su cuenta. Aditivo — no reemplaza
+                // pasillos_slots, que se deja igual por compatibilidad.
+                'pasillos'           => $evento->teatro->pasillos_slots,
+                'total_columnas'     => $evento->teatro->asientos_por_fila + count($evento->teatro->pasillos_slots ?? []),
             ],
             'zonas'    => $zonasResumen,
             'asientos' => $asientosMaster
